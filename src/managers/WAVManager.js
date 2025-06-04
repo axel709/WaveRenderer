@@ -40,7 +40,7 @@ export class WAVManager {
             /** @type {number} Total data size in bytes */
             const dataSize = numSamples * bytesPerSample;
 
-            // Maak WAV-header (44 bytes)
+            // Create WAV-header (44 bytes)
             const header = Buffer.alloc(44);
 
             header.write('RIFF', 0); // Chunk ID
@@ -59,17 +59,17 @@ export class WAVManager {
             header.write('data', 36); // Subchunk2 ID
             header.writeUInt32LE(dataSize, 40); // Subchunk2 Size
 
-            // Genereer audio samples
+            // Generate audio samples
             const audioData = Buffer.alloc(dataSize);
             let sampleIndex = 0;
 
             for (const pixel of pixels) {
-                // Map brightness (0-255) naar frequentie (MIN_FREQUENCY-MAX_FREQUENCY)
+                // Map brightness (0-255) to frequency (MIN_FREQUENCY-MAX_FREQUENCY)
                 const frequency = MIN_FREQUENCY + (pixel.brightness / 255) * (MAX_FREQUENCY - MIN_FREQUENCY);
 
                 for (let i = 0; i < samplesPerPixel; i++) {
                     const t = i / SAMPLE_RATE;
-                    const sample = Math.sin(2 * Math.PI * frequency * t) * 0.5; // Sinusgolf, amplitude 0.5
+                    const sample = Math.sin(2 * Math.PI * frequency * t) * 0.5; // Sine wave, amplitude 0.5
                     const sampleValue = Math.round(sample * 32767); // 16-bit signed
 
                     audioData.writeInt16LE(sampleValue, sampleIndex);
@@ -77,9 +77,9 @@ export class WAVManager {
                 }
             }
 
-            // Schrijf WAV-bestand
+            // Write WAV file
             await fs.writeFile(this.outputPath, Buffer.concat([header, audioData]));
-            
+
         } catch (err) {
             throw new Error(`Failed to generate WAV: ${err.message}`);
         }

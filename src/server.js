@@ -23,7 +23,7 @@ class Server {
 
         /** @type {string} Directory path for input PNG files */
         this.baseInputDir = path.join(__dirname, `../${INPUT_DIR}`);
-        
+
         /** @type {string} Directory path for output WAV files */
         this.baseOutputDir = path.join(__dirname, `../${OUTPUT_DIR}`);
     }
