@@ -1,0 +1,21 @@
+{
+  "name": "waverenderer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/axel709/WaveRenderer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/axel709/WaveRenderer/issues"
+  },
+  "homepage": "https://github.com/axel709/WaveRenderer#readme"
+}
