@@ -6,7 +6,6 @@
 import fs from 'fs/promises';
 import zlib from 'zlib';
 import { promisify } from 'util';
-
 import { PNG_SIGNATURE, SUPPORTED_COLOR_TYPES, BIT_DEPTH } from '../constants.js';
 
 const inflateAsync = promisify(zlib.inflate);
@@ -38,6 +37,7 @@ export class PNGManager {
 
             // Controleer PNG-handtekening
             const signature = buffer.subarray(0, 8);
+            console.log(`File: ${this.inputPath}, Signature: ${signature.toString('hex')}`);
 
             if (!signature.equals(PNG_SIGNATURE)) {
                 throw new Error('Invalid PNG file signature');
@@ -88,6 +88,7 @@ export class PNGManager {
                 } else if (type === 'IEND') {
                     break;
                 }
+
                 offset += length + 12;
             }
 
@@ -95,15 +96,23 @@ export class PNGManager {
             /** @type {Buffer} Decompressed pixel data */
             const decompressed = await inflateAsync(idatData);
 
+            // Debug: controleer grootte van gedecomprimeerde data
+            const expectedBytes = height * (width * (colorType === 2 ? 3 : 4) + 1);
+            console.log(`File: ${this.inputPath}, Decompressed IDAT size: ${decompressed.length}, Expected: ${expectedBytes}`);
+
+            if (decompressed.length < expectedBytes) {
+                throw new Error('Decompressed IDAT data too small');
+            }
+
             // Verwerk pixeldata
             /** @type {{x: number, y: number, brightness: number}[]} Array of pixel objects */
             const pixels = [];
             let pixelIndex = 0;
-
             const bytesPerPixel = colorType === 2 ? 3 : 4;
 
             for (let y = 0; y < height; y++) {
                 pixelIndex++; // Skip filterbyte
+
                 for (let x = 0; x < width; x++) {
                     const r = decompressed[pixelIndex++];
                     const g = decompressed[pixelIndex++];

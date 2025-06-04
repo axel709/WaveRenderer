@@ -28,7 +28,7 @@ export const BIT_DEPTH = 8;
 export const INPUT_DIR = 'input';
 
 /**
- * Directory name for output files (not used in current implementation).
+ * Directory name for output files.
  * @constant {string}
  */
 export const OUTPUT_DIR = 'output';
@@ -37,4 +37,28 @@ export const OUTPUT_DIR = 'output';
  * Default image name for processing.
  * @constant {string}
  */
-export const DEFAULT_IMAGE_NAME = 'monk.png';
+export const DEFAULT_IMAGE_NAME = 'dude.png';
+
+/**
+ * Sample rate for WAV audio output (Hz).
+ * @constant {number}
+ */
+export const SAMPLE_RATE = 44100;
+
+/**
+ * Duration per pixel in seconds for audio generation.
+ * @constant {number}
+ */
+export const PIXEL_DURATION = 0.001;
+
+/**
+ * Minimum frequency for audio mapping (Hz).
+ * @constant {number}
+ */
+export const MIN_FREQUENCY = 100;
+
+/**
+ * Maximum frequency for audio mapping (Hz).
+ * @constant {number}
+ */
+export const MAX_FREQUENCY = 1000;
