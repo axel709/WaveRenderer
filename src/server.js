@@ -1,40 +1,20 @@
-/**
- * Main server module for initializing and running the PNG-to-audio conversion application.
- * @module server
- */
-
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import { ConverterController } from './controllers/ConverterController.js';
+import { PNGFromWAVManager } from './managers/WTPManager.js';
 import { INPUT_DIR, OUTPUT_DIR } from './constants.js';
 
-/**
- * The Server class manages the application's initialization and PNG-to-audio conversion.
- */
 class Server {
-    /**
-     * Initializes the Server with input and output directory paths.
-     * @constructor
-     */
     constructor() {
         const __filename = fileURLToPath(import.meta.url);
         const __dirname = path.dirname(__filename);
-
-        /** @type {string} Directory path for input PNG files */
         this.baseInputDir = path.join(__dirname, `../${INPUT_DIR}`);
-
-        /** @type {string} Directory path for output WAV files */
         this.baseOutputDir = path.join(__dirname, `../${OUTPUT_DIR}`);
     }
 
-    /**
-     * Processes all PNG files in the input directory and converts them to WAV audio.
-     * @returns {Promise<void>}
-     */
-    async convertImagesToAudio() {
+    async convertImagesToAudioAndBack() {
         try {
-            /** @type {string[]} List of files in the input directory */
             const files = await fs.readdir(this.baseInputDir);
             const pngFiles = files.filter(file => file.toLowerCase().endsWith('.png'));
 
@@ -44,37 +24,35 @@ class Server {
 
             for (const imageName of pngFiles) {
                 const imagePath = path.join(this.baseInputDir, imageName);
-                const outputPath = path.join(this.baseOutputDir, `converted_${imageName}.wav`);
-                console.log(`Processing ${imageName}...`);
+                const outputWavPath = path.join(this.baseOutputDir, `converted_${imageName}.wav`);
+                const outputPngPath = path.join(this.baseOutputDir, `reconstructed_${imageName}`);
+                console.log(`Processing ${imageName} to WAV...`);
 
-                const controller = new ConverterController(imagePath, outputPath);
+                const controller = new ConverterController(imagePath, outputWavPath);
                 await controller.run();
-                console.log(`Finished processing ${imageName}, output saved at ${outputPath}`);
+                console.log(`Finished processing ${imageName}, WAV saved at ${outputWavPath}`);
+                console.log(`Converting WAV ${outputWavPath} back to PNG...`);
 
+                const wavToPngConverter = new PNGFromWAVManager(outputWavPath, outputPngPath);
+                await wavToPngConverter.convert();
+                console.log(`Finished converting WAV to PNG, saved at ${outputPngPath}`);
             }
-
         } catch (err) {
-            throw new Error(`Failed to process PNG files: ${err.message}`);
+            throw new Error(`Failed to process files: ${err.message}`);
         }
     }
 }
 
-/**
- * Main function to initialize and run the server.
- * @returns {Promise<void>}
- */
 async function main() {
     const server = new Server();
 
     try {
-        await server.convertImagesToAudio();
-        console.log('All PNG files processed successfully');
-
+        await server.convertImagesToAudioAndBack();
+        console.log('All PNG files processed and reconstructed successfully');
     } catch (err) {
         console.error('Error:', err);
         process.exit(1);
     }
 }
 
-// Execute the main function
 main();
