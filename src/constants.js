@@ -13,5 +13,6 @@ export const DEFAULT_IMAGE_NAME = 'dude.png';
 export const SAMPLE_RATE = 44100;
 export const PIXEL_DURATION = 0.01;
 export const MARKER_FREQ_SCALE = 10;
+export const PIXEL_FREQ_SCALE = 10;
 export const MIN_FREQUENCY = 0;
 export const MAX_FREQUENCY = 255;

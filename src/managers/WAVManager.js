@@ -1,5 +1,5 @@
 import fs from 'fs/promises';
-import { SAMPLE_RATE, PIXEL_DURATION, MARKER_FREQ_SCALE, MIN_FREQUENCY, MAX_FREQUENCY } from '../constants.js';
+import { SAMPLE_RATE, PIXEL_DURATION, MARKER_FREQ_SCALE, MIN_FREQUENCY, MAX_FREQUENCY, PIXEL_FREQ_SCALE } from '../constants.js';
 
 export class WAVManager {
     constructor(outputPath) {
@@ -35,8 +35,6 @@ export class WAVManager {
             let phase = 0;
 
             const generateTone = (frequency, numSamples, amplitude = 0.8) => {
-                // console.log(`Generating tone: Frequency = ${frequency.toFixed(2)} Hz, Samples = ${numSamples}, Amplitude = ${amplitude}`);
-
                 for (let i = 0; i < numSamples; i++) {
                     const t = i / SAMPLE_RATE;
                     const sample = frequency === 0 ? 0 : Math.sin(phase + 2 * Math.PI * frequency * t) * amplitude;
@@ -59,8 +57,7 @@ export class WAVManager {
             generateTone(heightFrequency, samplesPerMarker);
 
             for (const pixel of pixels) {
-                const frequency = Math.max(MIN_FREQUENCY, Math.min(MAX_FREQUENCY, pixel.brightness));
-                // console.log(`Pixel (${pixel.x}, ${pixel.y}), Brightness: ${pixel.brightness}, Frequency: ${frequency.toFixed(2)} Hz`);
+                const frequency = pixel.brightness * PIXEL_FREQ_SCALE; // Schaal de frequentie voor hogere geluiden
                 generateTone(frequency, samplesPerPixel);
             }
 

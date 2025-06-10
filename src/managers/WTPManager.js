@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import zlib from 'zlib';
 import { promisify } from 'util';
-import { SAMPLE_RATE, PIXEL_DURATION, PNG_SIGNATURE, MARKER_FREQ_SCALE } from '../constants.js';
+import { SAMPLE_RATE, PIXEL_DURATION, PNG_SIGNATURE, MARKER_FREQ_SCALE, PIXEL_FREQ_SCALE } from '../constants.js';
 
 const deflateAsync = promisify(zlib.deflate);
 
@@ -114,10 +114,9 @@ export class PNGFromWAVManager {
             const index = (i - 2 * samplesPerSecond * 2) / (samplesPerPixel * 2);
             const x = index % width;
             const y = Math.floor(index / width);
-            const analysis = this.analyzeSegment(segmentSamples, SAMPLE_RATE, `Pixel (${x}, ${y})`, 255);
+            const analysis = this.analyzeSegment(segmentSamples, SAMPLE_RATE, `Pixel (${x}, ${y})`, 255 * PIXEL_FREQ_SCALE);
             const frequency = analysis.frequency;
-            const brightness = Math.max(0, Math.min(255, Math.round(frequency)));
-            // console.log(`Pixel (${x}, ${y}): Frequency = ${frequency.toFixed(2)} Hz, Brightness = ${brightness}, Zero Crossings = ${analysis.zeroCrossings}, Max Amplitude = ${analysis.maxAmplitude}, Warnings: ${analysis.warnings.join('; ')}`);
+            const brightness = Math.max(0, Math.min(255, Math.round(frequency / PIXEL_FREQ_SCALE)));
             pixels.push({ x, y, brightness });
         }
 
@@ -156,11 +155,7 @@ export class PNGFromWAVManager {
             if (sample > result.maxAmplitude) result.maxAmplitude = sample;
         }
 
-        // console.log(`${segmentName}: Sample count = ${sampleCount}, Duration = ${duration.toFixed(4)}s, Max Amplitude = ${result.maxAmplitude}`);
-
         if (result.maxAmplitude < amplitudeThreshold) {
-            // result.warnings.push(`${segmentName}: Low amplitude (${result.maxAmplitude}) in segment, possible invalid signal`);
-            // console.log(`${segmentName}: ${result.warnings[0]}`);
             return result;
         }
 
@@ -185,13 +180,10 @@ export class PNGFromWAVManager {
         if (result.zeroCrossings >= 4) {
             const period = (lastZeroCrossingTime - firstZeroCrossingTime) / ((result.zeroCrossings / 2) - 1);
             result.frequency = period > 0 ? 1 / period : 0;
-            // console.log(`${segmentName}: Zero-crossing frequency = ${result.frequency.toFixed(2)} Hz`);
         } else {
             result.warnings.push(`${segmentName}: Insufficient zero crossings (${result.zeroCrossings}) for frequency calculation`);
-            // console.log(`${segmentName}: ${result.warnings[0]}`);
             result.frequency = simpleFFT(signal, sampleRate, maxFreq);
             result.warnings.push(`${segmentName}: Used FFT fallback, frequency = ${result.frequency.toFixed(2)} Hz`);
-            // console.log(`${segmentName}: FFT frequency = ${result.frequency.toFixed(2)} Hz`);
         }
 
         return result;
