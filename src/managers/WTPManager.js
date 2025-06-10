@@ -117,7 +117,7 @@ export class PNGFromWAVManager {
             const analysis = this.analyzeSegment(segmentSamples, SAMPLE_RATE, `Pixel (${x}, ${y})`, 255);
             const frequency = analysis.frequency;
             const brightness = Math.max(0, Math.min(255, Math.round(frequency)));
-            console.log(`Pixel (${x}, ${y}): Frequency = ${frequency.toFixed(2)} Hz, Brightness = ${brightness}, Zero Crossings = ${analysis.zeroCrossings}, Max Amplitude = ${analysis.maxAmplitude}, Warnings: ${analysis.warnings.join('; ')}`);
+            // console.log(`Pixel (${x}, ${y}): Frequency = ${frequency.toFixed(2)} Hz, Brightness = ${brightness}, Zero Crossings = ${analysis.zeroCrossings}, Max Amplitude = ${analysis.maxAmplitude}, Warnings: ${analysis.warnings.join('; ')}`);
             pixels.push({ x, y, brightness });
         }
 
@@ -156,11 +156,11 @@ export class PNGFromWAVManager {
             if (sample > result.maxAmplitude) result.maxAmplitude = sample;
         }
 
-        console.log(`${segmentName}: Sample count = ${sampleCount}, Duration = ${duration.toFixed(4)}s, Max Amplitude = ${result.maxAmplitude}`);
+        // console.log(`${segmentName}: Sample count = ${sampleCount}, Duration = ${duration.toFixed(4)}s, Max Amplitude = ${result.maxAmplitude}`);
 
         if (result.maxAmplitude < amplitudeThreshold) {
-            result.warnings.push(`${segmentName}: Low amplitude (${result.maxAmplitude}) in segment, possible invalid signal`);
-            console.log(`${segmentName}: ${result.warnings[0]}`);
+            // result.warnings.push(`${segmentName}: Low amplitude (${result.maxAmplitude}) in segment, possible invalid signal`);
+            // console.log(`${segmentName}: ${result.warnings[0]}`);
             return result;
         }
 
@@ -185,13 +185,13 @@ export class PNGFromWAVManager {
         if (result.zeroCrossings >= 4) {
             const period = (lastZeroCrossingTime - firstZeroCrossingTime) / ((result.zeroCrossings / 2) - 1);
             result.frequency = period > 0 ? 1 / period : 0;
-            console.log(`${segmentName}: Zero-crossing frequency = ${result.frequency.toFixed(2)} Hz`);
+            // console.log(`${segmentName}: Zero-crossing frequency = ${result.frequency.toFixed(2)} Hz`);
         } else {
             result.warnings.push(`${segmentName}: Insufficient zero crossings (${result.zeroCrossings}) for frequency calculation`);
-            console.log(`${segmentName}: ${result.warnings[0]}`);
+            // console.log(`${segmentName}: ${result.warnings[0]}`);
             result.frequency = simpleFFT(signal, sampleRate, maxFreq);
             result.warnings.push(`${segmentName}: Used FFT fallback, frequency = ${result.frequency.toFixed(2)} Hz`);
-            console.log(`${segmentName}: FFT frequency = ${result.frequency.toFixed(2)} Hz`);
+            // console.log(`${segmentName}: FFT frequency = ${result.frequency.toFixed(2)} Hz`);
         }
 
         return result;

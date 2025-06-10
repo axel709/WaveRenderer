@@ -14,9 +14,9 @@ export class ConverterController {
             const { width, height, pixels } = await this.pngManager.readPixels();
             console.log(`Image dimensions: ${width}x${height}`);
 
-            for (const pixel of pixels) {
-                console.log(`Pixel at (${pixel.x}, ${pixel.y}): Brightness = ${pixel.brightness}`);
-            }
+            // for (const pixel of pixels) {
+            //     console.log(`Pixel at (${pixel.x}, ${pixel.y}): Brightness = ${pixel.brightness}`);
+            // }
 
             await this.wavManager.generateWAV(width, height, pixels);
         } catch (err) {

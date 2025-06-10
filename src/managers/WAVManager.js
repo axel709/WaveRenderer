@@ -35,7 +35,7 @@ export class WAVManager {
             let phase = 0;
 
             const generateTone = (frequency, numSamples, amplitude = 0.8) => {
-                console.log(`Generating tone: Frequency = ${frequency.toFixed(2)} Hz, Samples = ${numSamples}, Amplitude = ${amplitude}`);
+                // console.log(`Generating tone: Frequency = ${frequency.toFixed(2)} Hz, Samples = ${numSamples}, Amplitude = ${amplitude}`);
 
                 for (let i = 0; i < numSamples; i++) {
                     const t = i / SAMPLE_RATE;
@@ -60,7 +60,7 @@ export class WAVManager {
 
             for (const pixel of pixels) {
                 const frequency = Math.max(MIN_FREQUENCY, Math.min(MAX_FREQUENCY, pixel.brightness));
-                console.log(`Pixel (${pixel.x}, ${pixel.y}), Brightness: ${pixel.brightness}, Frequency: ${frequency.toFixed(2)} Hz`);
+                // console.log(`Pixel (${pixel.x}, ${pixel.y}), Brightness: ${pixel.brightness}, Frequency: ${frequency.toFixed(2)} Hz`);
                 generateTone(frequency, samplesPerPixel);
             }
 
