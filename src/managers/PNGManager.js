@@ -58,7 +58,8 @@ export class PNGManager {
             }
 
             const decompressed = await inflateAsync(idatData);
-            const expectedBytes = height * (width * (colorType === 2 ? 3 : 4) + 1);
+            const bytesPerPixel = colorType === 2 ? 3 : 4;
+            const expectedBytes = height * (width * bytesPerPixel + 1);
             console.log(`File: ${this.inputPath}, Decompressed IDAT size: ${decompressed.length}, Expected: ${expectedBytes}`);
 
             if (decompressed.length < expectedBytes) {
@@ -67,18 +68,16 @@ export class PNGManager {
 
             const pixels = [];
             let pixelIndex = 0;
-            const bytesPerPixel = colorType === 2 ? 3 : 4;
 
             for (let y = 0; y < height; y++) {
-                pixelIndex++;
+                pixelIndex++; // Skip filter byte
 
                 for (let x = 0; x < width; x++) {
                     const r = decompressed[pixelIndex++];
                     const g = decompressed[pixelIndex++];
                     const b = decompressed[pixelIndex++];
                     const a = colorType === 6 ? decompressed[pixelIndex++] : 255;
-                    const brightness = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-                    pixels.push({ x, y, brightness });
+                    pixels.push({ x, y, r, g, b, a });
                 }
             }
 
