@@ -90,34 +90,34 @@ export class PNGFromWAVManager {
 
         const samples = buffer.subarray(dataStart, dataStart + dataSize);
         const samplesPerSecond = SAMPLE_RATE;
-        const samplesPerPixelComponent = Math.round(SAMPLE_RATE * PIXEL_DURATION);
-        const numComponents = 4; // R, G, B, A
+        const samplesPerPixel = Math.round(SAMPLE_RATE * PIXEL_DURATION);
+        console.log(`Samples per pixel: ${samplesPerPixel} (duration: ${PIXEL_DURATION}s)`);
 
         const marker1Samples = samples.subarray(0, samplesPerSecond * 2);
         const widthAnalysis = this.analyzeSegment(marker1Samples, SAMPLE_RATE, 'Width Marker', 10000);
+        console.log(`Width Marker: Frequency = ${widthAnalysis.frequency.toFixed(2)} Hz, Zero Crossings = ${widthAnalysis.zeroCrossings}, Max Amplitude = ${widthAnalysis.maxAmplitude}, Warnings: ${widthAnalysis.warnings.join('; ')}`);
+        
         const width = Math.round(widthAnalysis.frequency / MARKER_FREQ_SCALE);
         console.log(`Extracted width: ${width} pixels`);
 
         const marker2Samples = samples.subarray(samplesPerSecond * 2, 2 * samplesPerSecond * 2);
         const heightAnalysis = this.analyzeSegment(marker2Samples, SAMPLE_RATE, 'Height Marker', 10000);
+        console.log(`Height Marker: Frequency = ${heightAnalysis.frequency.toFixed(2)} Hz, Zero Crossings = ${heightAnalysis.zeroCrossings}, Max Amplitude = ${heightAnalysis.maxAmplitude}, Warnings: ${heightAnalysis.warnings.join('; ')}`);
+        
         const height = Math.round(heightAnalysis.frequency / MARKER_FREQ_SCALE);
         console.log(`Extracted height: ${height} pixels`);
+        console.log(`Extracting pixel brightness values for ${width}x${height} image`);
 
         const pixels = [];
-        const totalPixels = width * height;
-        for (let p = 0; p < totalPixels; p++) {
-            const components = [];
-            for (let c = 0; c < numComponents; c++) {
-                const start = 2 * samplesPerSecond * 2 + (p * numComponents + c) * samplesPerPixelComponent * 2;
-                const segmentSamples = samples.subarray(start, start + samplesPerPixelComponent * 2);
-                const analysis = this.analyzeSegment(segmentSamples, SAMPLE_RATE, `Pixel ${p} Component ${c}`, 255 * PIXEL_FREQ_SCALE);
-                const frequency = analysis.frequency;
-                const value = Math.max(0, Math.min(255, Math.round(frequency / PIXEL_FREQ_SCALE)));
-                components.push(value);
-            }
-            const x = p % width;
-            const y = Math.floor(p / width);
-            pixels.push({ x, y, r: components[0], g: components[1], b: components[2], a: components[3] });
+        for (let i = 2 * samplesPerSecond * 2; i < samples.length; i += samplesPerPixel * 2) {
+            const segmentSamples = samples.subarray(i, Math.min(i + samplesPerPixel * 2, samples.length));
+            const index = (i - 2 * samplesPerSecond * 2) / (samplesPerPixel * 2);
+            const x = index % width;
+            const y = Math.floor(index / width);
+            const analysis = this.analyzeSegment(segmentSamples, SAMPLE_RATE, `Pixel (${x}, ${y})`, 255 * PIXEL_FREQ_SCALE);
+            const frequency = analysis.frequency;
+            const brightness = Math.max(0, Math.min(255, Math.round(frequency / PIXEL_FREQ_SCALE)));
+            pixels.push({ x, y, brightness });
         }
 
         console.log(`Extracted ${pixels.length} pixels`);
@@ -139,6 +139,7 @@ export class PNGFromWAVManager {
         }
 
         const sampleCount = samples.length / 2;
+        const duration = sampleCount / sampleRate;
         const amplitudeThreshold = 50;
         let previousSample = 0;
         let firstZeroCrossingTime = -1;
@@ -189,23 +190,20 @@ export class PNGFromWAVManager {
     }
 
     async writePNG(width, height, pixels) {
-        const bytesPerPixel = 4; // RGBA
+        const bytesPerPixel = 1;
         const scanlineWidth = width * bytesPerPixel + 1;
         const dataLength = height * scanlineWidth;
         const pixelData = Buffer.alloc(dataLength);
         let offset = 0;
 
         for (let y = 0; y < height; y++) {
-            pixelData.writeUInt8(0, offset); // Filter type 0
+            pixelData.writeUInt8(0, offset);
             offset++;
 
             for (let x = 0; x < width; x++) {
-                const pixel = pixels.find(p => p.x === x && p.y === y) || { r: 0, g: 0, b: 0, a: 255 };
-                pixelData.writeUInt8(pixel.r, offset);
-                pixelData.writeUInt8(pixel.g, offset + 1);
-                pixelData.writeUInt8(pixel.b, offset + 2);
-                pixelData.writeUInt8(pixel.a, offset + 3);
-                offset += 4;
+                const pixel = pixels.find(p => p.x === x && p.y === y) || { brightness: 0 };
+                pixelData.writeUInt8(pixel.brightness, offset);
+                offset++;
             }
         }
 
@@ -214,8 +212,8 @@ export class PNGFromWAVManager {
 
         ihdrData.writeUInt32BE(width, 0);
         ihdrData.writeUInt32BE(height, 4);
-        ihdrData.writeUInt8(8, 8); // Bit depth
-        ihdrData.writeUInt8(6, 9); // Color type: RGBA
+        ihdrData.writeUInt8(8, 8);
+        ihdrData.writeUInt8(0, 9);
         ihdrData.writeUInt8(0, 10);
         ihdrData.writeUInt8(0, 11);
         ihdrData.writeUInt8(0, 12);

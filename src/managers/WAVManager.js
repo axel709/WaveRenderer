@@ -1,5 +1,5 @@
 import fs from 'fs/promises';
-import { SAMPLE_RATE, PIXEL_DURATION, MARKER_FREQ_SCALE, PIXEL_FREQ_SCALE } from '../constants.js';
+import { SAMPLE_RATE, PIXEL_DURATION, MARKER_FREQ_SCALE, MIN_FREQUENCY, MAX_FREQUENCY, PIXEL_FREQ_SCALE } from '../constants.js';
 
 export class WAVManager {
     constructor(outputPath) {
@@ -8,11 +8,10 @@ export class WAVManager {
 
     async generateWAV(width, height, pixels) {
         try {
-            console.log(`Generating WAV: ${width}x${height}, ${pixels.length} pixels with RGBA`);
+            console.log(`Generating WAV: ${width}x${height}, ${pixels.length} pixels`);
             const samplesPerMarker = Math.round(SAMPLE_RATE * 1);
-            const samplesPerPixelComponent = Math.round(SAMPLE_RATE * PIXEL_DURATION);
-            const numComponents = 4; // R, G, B, A
-            const numSamples = 2 * samplesPerMarker + pixels.length * numComponents * samplesPerPixelComponent;
+            const samplesPerPixel = Math.round(SAMPLE_RATE * PIXEL_DURATION);
+            const numSamples = 2 * samplesPerMarker + pixels.length * samplesPerPixel;
             const bytesPerSample = 2;
             const dataSize = numSamples * bytesPerSample;
             const header = Buffer.alloc(44);
@@ -58,11 +57,8 @@ export class WAVManager {
             generateTone(heightFrequency, samplesPerMarker);
 
             for (const pixel of pixels) {
-                const components = [pixel.r, pixel.g, pixel.b, pixel.a];
-                for (const component of components) {
-                    const frequency = component * PIXEL_FREQ_SCALE;
-                    generateTone(frequency, samplesPerPixelComponent);
-                }
+                const frequency = pixel.brightness * PIXEL_FREQ_SCALE; // Schaal de frequentie voor hogere geluiden
+                generateTone(frequency, samplesPerPixel);
             }
 
             console.log(`Writing WAV file to ${this.outputPath}`);
