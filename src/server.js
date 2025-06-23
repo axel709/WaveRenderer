@@ -26,10 +26,7 @@ class Server {
 
     async convertImagesToAudioAndBack() {
         try {
-            // Zorg dat de mappen bestaan
             await this.ensureDirectories();
-
-            // Stap 1: Converteer PNG's uit input/ naar WAV's in audio/
             const pngFiles = (await fs.readdir(this.baseInputDir)).filter(file => file.toLowerCase().endsWith('.png'));
 
             if (pngFiles.length === 0) {
@@ -46,7 +43,6 @@ class Server {
                 }
             }
 
-            // Stap 2: Converteer alle WAV's uit audio/ naar PNG's in output/
             const wavFiles = (await fs.readdir(this.baseAudioDir)).filter(file => file.toLowerCase().endsWith('.wav'));
 
             if (wavFiles.length === 0) {
