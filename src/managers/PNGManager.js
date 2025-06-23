@@ -37,7 +37,7 @@ export class PNGManager {
             }
 
             if (!SUPPORTED_COLOR_TYPES.includes(colorType)) {
-                throw new Error('Only RGB and RGBA color types are supported');
+                throw new Error('Unsupported color type');
             }
 
             let offset = ihdrStart + 25;
@@ -58,26 +58,83 @@ export class PNGManager {
             }
 
             const decompressed = await inflateAsync(idatData);
-            const expectedBytes = height * (width * (colorType === 2 ? 3 : 4) + 1);
+            const bytesPerPixel = colorType === 0 ? 1 : colorType === 2 ? 3 : 4;
+            const scanlineWidth = width * bytesPerPixel + 1;
+            const expectedBytes = height * scanlineWidth;
             console.log(`File: ${this.inputPath}, Decompressed IDAT size: ${decompressed.length}, Expected: ${expectedBytes}`);
 
             if (decompressed.length < expectedBytes) {
                 throw new Error('Decompressed IDAT data too small');
             }
 
-            const pixels = [];
-            let pixelIndex = 0;
-            const bytesPerPixel = colorType === 2 ? 3 : 4;
+            const pixelData = Buffer.alloc(height * width * bytesPerPixel);
+            let srcIndex = 0;
+            let destIndex = 0;
+            let previousScanline = null;
+
+            const paethPredictor = (a, b, c) => {
+                const p = a + b - c;
+                const pa = Math.abs(p - a);
+                const pb = Math.abs(p - b);
+                const pc = Math.abs(p - c);
+                if (pa <= pb && pa <= pc) return a;
+                if (pb <= pc) return b;
+                return c;
+            };
+
+            const applyReverseFilter = (filterType, current, previous, bpp, result, index) => {
+                for (let i = 0; i < current.length; i++) {
+                    const x = current[i];
+                    let a = i >= bpp ? result[index + i - bpp] : 0;
+                    let b = previous ? previous[i] : 0;
+                    let c = previous && i >= bpp ? previous[i - bpp] : 0;
+
+                    switch (filterType) {
+                        case 0:
+                            result[index + i] = x;
+                            break;
+                        case 1:
+                            result[index + i] = (x + a) & 0xff;
+                            break;
+                        case 2:
+                            result[index + i] = (x + b) & 0xff;
+                            break;
+                        case 3:
+                            result[index + i] = (x + Math.floor((a + b) / 2)) & 0xff;
+                            break;
+                        case 4:
+                            result[index + i] = (x + paethPredictor(a, b, c)) & 0xff;
+                            break;
+                        default:
+                            throw new Error(`Invalid filter type: ${filterType}`);
+                    }
+                }
+            };
 
             for (let y = 0; y < height; y++) {
-                pixelIndex++;
+                const filterType = decompressed[srcIndex++];
+                const currentScanline = decompressed.subarray(srcIndex, srcIndex + width * bytesPerPixel);
+                applyReverseFilter(filterType, currentScanline, previousScanline, bytesPerPixel, pixelData, destIndex);
+                previousScanline = pixelData.subarray(destIndex, destIndex + width * bytesPerPixel);
+                srcIndex += width * bytesPerPixel;
+                destIndex += width * bytesPerPixel;
+            }
 
+            const pixels = [];
+            let pixelIndex = 0;
+
+            for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
-                    const r = decompressed[pixelIndex++];
-                    const g = decompressed[pixelIndex++];
-                    const b = decompressed[pixelIndex++];
-                    const a = colorType === 6 ? decompressed[pixelIndex++] : 255;
-                    const brightness = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+                    let brightness;
+                    if (colorType === 0) {
+                        brightness = pixelData[pixelIndex++];
+                    } else {
+                        const r = pixelData[pixelIndex++];
+                        const g = pixelData[pixelIndex++];
+                        const b = pixelData[pixelIndex++];
+                        const a = colorType === 6 ? pixelData[pixelIndex++] : 255;
+                        brightness = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+                    }
                     pixels.push({ x, y, brightness });
                 }
             }

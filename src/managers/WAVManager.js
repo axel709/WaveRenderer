@@ -57,7 +57,7 @@ export class WAVManager {
             generateTone(heightFrequency, samplesPerMarker);
 
             for (const pixel of pixels) {
-                const frequency = pixel.brightness * PIXEL_FREQ_SCALE; // Schaal de frequentie voor hogere geluiden
+                const frequency = pixel.brightness * PIXEL_FREQ_SCALE;
                 generateTone(frequency, samplesPerPixel);
             }
 

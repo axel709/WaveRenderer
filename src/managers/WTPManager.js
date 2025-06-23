@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import zlib from 'zlib';
 import { promisify } from 'util';
 import { SAMPLE_RATE, PIXEL_DURATION, PNG_SIGNATURE, MARKER_FREQ_SCALE, PIXEL_FREQ_SCALE } from '../constants.js';
+import { crc32 } from 'zlib';
 
 const deflateAsync = promisify(zlib.deflate);
 
@@ -32,6 +33,45 @@ function simpleFFT(signal, sampleRate, maxFreq) {
     }
 
     return dominantFreq;
+}
+
+function paethPredictor(a, b, c) {
+    const p = a + b - c;
+    const pa = Math.abs(p - a);
+    const pb = Math.abs(p - b);
+    const pc = Math.abs(p - c);
+    if (pa <= pb && pa <= pc) return a;
+    if (pb <= pc) return b;
+    return c;
+}
+
+function applyFilter(filterType, current, previous, bpp, result, index) {
+    for (let i = 0; i < current.length; i++) {
+        const x = current[i];
+        let a = i >= bpp ? current[i - bpp] : 0;
+        let b = previous ? previous[i] : 0;
+        let c = previous && i >= bpp ? previous[i - bpp] : 0;
+
+        switch (filterType) {
+            case 0:
+                result[index + i] = x;
+                break;
+            case 1:
+                result[index + i] = (x - a) & 0xff;
+                break;
+            case 2:
+                result[index + i] = (x - b) & 0xff;
+                break;
+            case 3:
+                result[index + i] = (x - Math.floor((a + b) / 2)) & 0xff;
+                break;
+            case 4:
+                result[index + i] = (x - paethPredictor(a, b, c)) & 0xff;
+                break;
+            default:
+                throw new Error(`Invalid filter type: ${filterType}`);
+        }
+    }
 }
 
 export class PNGFromWAVManager {
@@ -100,7 +140,7 @@ export class PNGFromWAVManager {
         const width = Math.round(widthAnalysis.frequency / MARKER_FREQ_SCALE);
         console.log(`Extracted width: ${width} pixels`);
 
-        const marker2Samples = samples.subarray(samplesPerSecond * 2, 2 * samplesPerSecond * 2);
+        const marker2Samples = samples.subarray(samplesPerSecond * 2, samplesPerSecond * 4);
         const heightAnalysis = this.analyzeSegment(marker2Samples, SAMPLE_RATE, 'Height Marker', 10000);
         console.log(`Height Marker: Frequency = ${heightAnalysis.frequency.toFixed(2)} Hz, Zero Crossings = ${heightAnalysis.zeroCrossings}, Max Amplitude = ${heightAnalysis.maxAmplitude}, Warnings: ${heightAnalysis.warnings.join('; ')}`);
         
@@ -109,9 +149,9 @@ export class PNGFromWAVManager {
         console.log(`Extracting pixel brightness values for ${width}x${height} image`);
 
         const pixels = [];
-        for (let i = 2 * samplesPerSecond * 2; i < samples.length; i += samplesPerPixel * 2) {
+        for (let i = samplesPerSecond * 4; i < samples.length; i += samplesPerPixel * 2) {
             const segmentSamples = samples.subarray(i, Math.min(i + samplesPerPixel * 2, samples.length));
-            const index = (i - 2 * samplesPerSecond * 2) / (samplesPerPixel * 2);
+            const index = (i - samplesPerSecond * 4) / (samplesPerPixel * 2);
             const x = index % width;
             const y = Math.floor(index / width);
             const analysis = this.analyzeSegment(segmentSamples, SAMPLE_RATE, `Pixel (${x}, ${y})`, 255 * PIXEL_FREQ_SCALE);
@@ -152,7 +192,9 @@ export class PNGFromWAVManager {
 
         for (let i = 0; i < samples.length; i += 2) {
             const sample = Math.abs(samples.readInt16LE(i));
-            if (sample > result.maxAmplitude) result.maxAmplitude = sample;
+            if (sample > result.maxAmplitude) {
+                result.maxAmplitude = sample;
+            }
         }
 
         if (result.maxAmplitude < amplitudeThreshold) {
@@ -196,15 +238,21 @@ export class PNGFromWAVManager {
         const pixelData = Buffer.alloc(dataLength);
         let offset = 0;
 
+        let previousScanline = null;
         for (let y = 0; y < height; y++) {
-            pixelData.writeUInt8(0, offset);
+            const filterType = 4;
+            pixelData.writeUInt8(filterType, offset);
             offset++;
 
+            const currentScanline = Buffer.alloc(width * bytesPerPixel);
             for (let x = 0; x < width; x++) {
                 const pixel = pixels.find(p => p.x === x && p.y === y) || { brightness: 0 };
-                pixelData.writeUInt8(pixel.brightness, offset);
-                offset++;
+                currentScanline.writeUInt8(pixel.brightness, x * bytesPerPixel);
             }
+
+            applyFilter(filterType, currentScanline, previousScanline, bytesPerPixel, pixelData, offset);
+            previousScanline = currentScanline;
+            offset += width * bytesPerPixel;
         }
 
         const compressedData = await deflateAsync(pixelData);
@@ -237,18 +285,6 @@ export class PNGFromWAVManager {
     }
 
     calculateCRC(data) {
-        let c = 0xffffffff;
-        const crcTable = new Uint32Array(256);
-        for (let n = 0; n < 256; n++) {
-            let c = n;
-            for (let k = 0; k < 8; k++) {
-                c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-            }
-            crcTable[n] = c;
-        }
-        for (let i = 0; i < data.length; i++) {
-            c = crcTable[(c ^ data[i]) & 0xff] ^ (c >>> 8);
-        }
-        return (c ^ 0xffffffff) >>> 0;
+        return crc32(data);
     }
 }
