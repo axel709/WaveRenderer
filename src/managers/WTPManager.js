@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import { promisify } from 'util';
 import { crc32 } from 'zlib';
 import zlib from 'zlib';
-import { SAMPLE_RATE, PIXEL_DURATION, PNG_SIGNATURE, MARKER_FREQ_SCALE, PIXEL_FREQ_SCALE } from '../constants.js';
+import { CONSTANTS } from '../constants.js';
 
 const deflateAsync = promisify(zlib.deflate);
 
@@ -33,8 +33,8 @@ export class PNGFromWAVManager {
         }
 
         const sampleRate = buffer.readUInt32LE(24);
-        if (sampleRate !== SAMPLE_RATE) {
-            throw new Error(`Unsupported sample rate: ${sampleRate}, expected ${SAMPLE_RATE}`);
+        if (sampleRate !== CONSTANTS.WAV.SAMPLE_RATE) {
+            throw new Error(`Unsupported sample rate: ${sampleRate}, expected ${CONSTANTS.WAV.SAMPLE_RATE}`);
         }
 
         let offset = 12;
@@ -55,15 +55,15 @@ export class PNGFromWAVManager {
         const dataStart = offset + 8;
         const dataSize = buffer.readUInt32LE(offset + 4);
         const samples = buffer.subarray(dataStart, dataStart + dataSize);
-        const samplesPerSecond = SAMPLE_RATE;
-        const samplesPerPixel = Math.round(SAMPLE_RATE * PIXEL_DURATION);
+        const samplesPerSecond = CONSTANTS.WAV.SAMPLE_RATE;
+        const samplesPerPixel = Math.round(CONSTANTS.WAV.SAMPLE_RATE * CONSTANTS.WAV.PIXEL.DURATION);
         const marker1Samples = samples.subarray(0, samplesPerSecond * 2);
-        const widthAnalysis = this.analyzeSegment(marker1Samples, SAMPLE_RATE, 'Width Marker', 10000);
-        const width = Math.round(widthAnalysis.frequency / MARKER_FREQ_SCALE);
+        const widthAnalysis = this.analyzeSegment(marker1Samples, CONSTANTS.WAV.SAMPLE_RATE, 'Width Marker', 10000);
+        const width = Math.round(widthAnalysis.frequency / CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE);
 
         const marker2Samples = samples.subarray(samplesPerSecond * 2, samplesPerSecond * 4);
-        const heightAnalysis = this.analyzeSegment(marker2Samples, SAMPLE_RATE, 'Height Marker', 10000);
-        const height = Math.round(heightAnalysis.frequency / MARKER_FREQ_SCALE);
+        const heightAnalysis = this.analyzeSegment(marker2Samples, CONSTANTS.WAV.SAMPLE_RATE, 'Height Marker', 10000);
+        const height = Math.round(heightAnalysis.frequency / CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE);
         console.log(`Extracting pixel brightness values for ${width}x${height} image`);
 
         const pixels = [];
@@ -72,9 +72,9 @@ export class PNGFromWAVManager {
             const index = (i - samplesPerSecond * 4) / (samplesPerPixel * 2);
             const x = index % width;
             const y = Math.floor(index / width);
-            const analysis = this.analyzeSegment(segmentSamples, SAMPLE_RATE, `Pixel (${x}, ${y})`, 255 * PIXEL_FREQ_SCALE);
+            const analysis = this.analyzeSegment(segmentSamples, CONSTANTS.WAV.SAMPLE_RATE, `Pixel (${x}, ${y})`, 255 * CONSTANTS.WAV.PIXEL.SCALE);
             const frequency = analysis.frequency;
-            const brightness = Math.max(0, Math.min(255, Math.round(frequency / PIXEL_FREQ_SCALE)));
+            const brightness = Math.max(0, Math.min(255, Math.round(frequency / CONSTANTS.WAV.PIXEL.SCALE)));
             pixels.push({ x, y, brightness });
         }
 
@@ -187,7 +187,7 @@ export class PNGFromWAVManager {
         const ihdrChunk = this.createChunk('IHDR', ihdrData);
         const idatChunk = this.createChunk('IDAT', compressedData);
         const iendChunk = this.createChunk('IEND', Buffer.alloc(0));
-        const fileData = Buffer.concat([PNG_SIGNATURE, ihdrChunk, idatChunk, iendChunk]);
+        const fileData = Buffer.concat([CONSTANTS.PNG.SIGNATURE, ihdrChunk, idatChunk, iendChunk]);
         await fs.writeFile(this.outputPngPath, fileData);
     }
 

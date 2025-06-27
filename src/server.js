@@ -3,15 +3,15 @@ import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import { ConverterController } from './controllers/ConverterController.js';
 import { PNGFromWAVManager } from './managers/WTPManager.js';
-import { INPUT_DIR, AUDIO_DIR, OUTPUT_DIR } from './constants.js';
+import { CONSTANTS } from './constants.js';
 
 class Server {
     constructor() {
         const __filename = fileURLToPath(import.meta.url);
         const __dirname = path.dirname(__filename);
-        this.baseInputDir = path.join(__dirname, `../${INPUT_DIR}`);
-        this.baseAudioDir = path.join(__dirname, `../${AUDIO_DIR}`);
-        this.baseOutputDir = path.join(__dirname, `../${OUTPUT_DIR}`);
+        this.baseInputDir = path.join(__dirname, `../${CONSTANTS.DIRECTORIES.INPUT}`);
+        this.baseAudioDir = path.join(__dirname, `../${CONSTANTS.DIRECTORIES.AUDIO}`);
+        this.baseOutputDir = path.join(__dirname, `../${CONSTANTS.DIRECTORIES.OUTPUT}`);
     }
 
     async ensureDirectories() {

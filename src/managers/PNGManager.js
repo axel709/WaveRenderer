@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import zlib from 'zlib';
 import { promisify } from 'util';
-import { PNG_SIGNATURE, SUPPORTED_COLOR_TYPES, BIT_DEPTH } from '../constants.js';
+import { CONSTANTS } from '../constants.js';
 
 const inflateAsync = promisify(zlib.inflate);
 
@@ -16,7 +16,7 @@ export class PNGManager {
             const signature = buffer.subarray(0, 8);
             const chunks = [];
 
-            if (!signature.equals(PNG_SIGNATURE)) {
+            if (!signature.equals(CONSTANTS.PNG.SIGNATURE)) {
                 throw new Error('Invalid PNG file signature');
             }
 
@@ -32,11 +32,11 @@ export class PNGManager {
             const bitDepth = buffer.readUInt8(ihdrStart + 16);
             const colorType = buffer.readUInt8(ihdrStart + 17);
 
-            if (bitDepth !== BIT_DEPTH) {
-                throw new Error(`Only bit depth ${BIT_DEPTH} is supported`);
+            if (bitDepth !== CONSTANTS.PNG.SUPPORTED.BIT_DEPTH) {
+                throw new Error(`Only bit depth ${CONSTANTS.PNG.SUPPORTED.BIT_DEPTH} is supported`);
             }
 
-            if (!SUPPORTED_COLOR_TYPES.includes(colorType)) {
+            if (!CONSTANTS.PNG.SUPPORTED.COLOR_TYPES.includes(colorType)) {
                 throw new Error('Unsupported color type');
             }
 
