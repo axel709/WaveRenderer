@@ -1,154 +1,191 @@
-import fs from 'fs/promises';
-import zlib from 'zlib';
-import { promisify } from 'util';
+import { Transform, Writable } from 'stream';
 import { CONSTANTS } from '../constants.js';
-
-const inflateAsync = promisify(zlib.inflate);
+import { pipeline } from 'stream/promises';
+import { createReadStream } from 'fs';
+import { open } from 'fs/promises';
+import { Inflate } from 'zlib';
 
 export class PNGManager {
-    constructor(inputPath) {
-        this.inputPath = inputPath;
+    constructor(filePath) {
+        this.filePath = filePath;
     }
 
     async readPixels() {
-        try {
-            const buffer = await fs.readFile(this.inputPath);
-            const signature = buffer.subarray(0, 8);
-            const chunks = [];
+        const startTotal = process.hrtime.bigint();
+        const startIHDR = process.hrtime.bigint();
+        const { width, height, bitDepth, colorType } = await this._readIHDR();
+        const durIHDR = Number(process.hrtime.bigint() - startIHDR) / 1e6;
+        console.log(`_readIHDR took ${durIHDR.toFixed(3)} ms`);
 
-            if (!signature.equals(CONSTANTS.PNG.SIGNATURE)) {
-                throw new Error('Invalid PNG file signature');
-            }
+        const bppMap = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+        const bpp = bppMap[colorType];
+        if (!bpp) throw new Error(`Unsupported colorType: ${colorType}`);
 
-            const ihdrStart = 8;
-            const chunkType = buffer.subarray(ihdrStart + 4, ihdrStart + 8).toString();
+        const startIDAT = process.hrtime.bigint();
+        const rawData = await this._extractAndInflateIDAT();
+        const durIDAT = Number(process.hrtime.bigint() - startIDAT) / 1e6;
+        console.log(`_extractAndInflateIDAT took ${durIDAT.toFixed(3)} ms`);
 
-            if (chunkType !== 'IHDR') {
-                throw new Error('IHDR chunk not found');
-            }
+        const startFilter = process.hrtime.bigint();
+        const pixelBuf = this._reverseFilter(rawData, width, height, bpp);
+        const durFilter = Number(process.hrtime.bigint() - startFilter) / 1e6;
+        console.log(`_reverseFilter took ${durFilter.toFixed(3)} ms`);
 
-            const width = buffer.readUInt32BE(ihdrStart + 8);
-            const height = buffer.readUInt32BE(ihdrStart + 12);
-            const bitDepth = buffer.readUInt8(ihdrStart + 16);
-            const colorType = buffer.readUInt8(ihdrStart + 17);
+        const startMap = process.hrtime.bigint();
+        const pixels = [];
+        let ptr = 0;
 
-            if (bitDepth !== CONSTANTS.PNG.SUPPORTED.BIT_DEPTH) {
-                throw new Error(`Only bit depth ${CONSTANTS.PNG.SUPPORTED.BIT_DEPTH} is supported`);
-            }
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                let brightness;
 
-            if (!CONSTANTS.PNG.SUPPORTED.COLOR_TYPES.includes(colorType)) {
-                throw new Error('Unsupported color type');
-            }
-
-            let offset = ihdrStart + 25;
-            let idatData = Buffer.alloc(0);
-
-            while (offset < buffer.length) {
-                const length = buffer.readUInt32BE(offset);
-                const type = buffer.subarray(offset + 4, offset + 8).toString();
-
-                if (type === 'IDAT') {
-                    chunks.push(buffer.subarray(offset + 8, offset + 8 + length));
-                } else if (type === 'IEND') {
-                    break;
+                if (colorType === 0) {
+                    brightness = pixelBuf[ptr++];
+                } else {
+                    const r = pixelBuf[ptr++];
+                    const g = pixelBuf[ptr++];
+                    const b = pixelBuf[ptr++];
+                    const a = (colorType === 6 ? pixelBuf[ptr++] : 255);
+                    brightness = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
                 }
 
-                offset += length + 12;
+                pixels.push({ x, y, brightness });
             }
-
-            if (chunks.length === 0) {
-                throw new Error('No IDAT chunks found');
-            }
-
-            idatData = Buffer.concat(chunks);
-            const decompressed = await inflateAsync(idatData);
-            const bytesPerPixel = colorType === 0 ? 1 : colorType === 2 ? 3 : 4;
-            const scanlineWidth = width * bytesPerPixel + 1;
-            const expectedBytes = height * scanlineWidth;
-
-            if (decompressed.length < expectedBytes) {
-                throw new Error('Decompressed IDAT data too small');
-            }
-
-            const pixelData = Buffer.alloc(height * width * bytesPerPixel);
-            let srcIndex = 0;
-            let destIndex = 0;
-            let previousScanline = null;
-
-            const paethPredictor = (a, b, c) => {
-                const p = a + b - c;
-                const pa = Math.abs(p - a);
-                const pb = Math.abs(p - b);
-                const pc = Math.abs(p - c);
-
-                if (pa <= pb && pa <= pc) return a;
-                if (pb <= pc) return b;
-
-                return c;
-            };
-
-            const applyReverseFilter = (filterType, current, previous, bpp, result, index) => {
-                for (let i = 0; i < current.length; i++) {
-                    const x = current[i];
-                    let a = i >= bpp ? result[index + i - bpp] : 0;
-                    let b = previous ? previous[i] : 0;
-                    let c = previous && i >= bpp ? previous[i - bpp] : 0;
-
-                    switch (filterType) {
-                        case 0:
-                            result[index + i] = x;
-                            break;
-                        case 1:
-                            result[index + i] = (x + a) & 0xff;
-                            break;
-                        case 2:
-                            result[index + i] = (x + b) & 0xff;
-                            break;
-                        case 3:
-                            result[index + i] = (x + Math.floor((a + b) / 2)) & 0xff;
-                            break;
-                        case 4:
-                            result[index + i] = (x + paethPredictor(a, b, c)) & 0xff;
-                            break;
-                        default:
-                            throw new Error(`Invalid filter type: ${filterType}`);
-                    }
-                }
-            };
-
-            for (let y = 0; y < height; y++) {
-                const filterType = decompressed[srcIndex++];
-                const currentScanline = decompressed.subarray(srcIndex, srcIndex + width * bytesPerPixel);
-                applyReverseFilter(filterType, currentScanline, previousScanline, bytesPerPixel, pixelData, destIndex);
-                
-                previousScanline = pixelData.subarray(destIndex, destIndex + width * bytesPerPixel);
-                srcIndex += width * bytesPerPixel;
-                destIndex += width * bytesPerPixel;
-            }
-
-            const pixels = [];
-            let pixelIndex = 0;
-
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width; x++) {
-                    let brightness;
-                    if (colorType === 0) {
-                        brightness = pixelData[pixelIndex++];
-                    } else {
-                        const r = pixelData[pixelIndex++];
-                        const g = pixelData[pixelIndex++];
-                        const b = pixelData[pixelIndex++];
-                        const a = colorType === 6 ? pixelData[pixelIndex++] : 255;
-                        brightness = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-                    }
-                    pixels.push({ x, y, brightness });
-                }
-            }
-
-            return { width, height, pixels };
-
-        } catch (err) {
-            throw new Error(`Failed to read PNG: ${err.message}`);
         }
+
+        const durMap = Number(process.hrtime.bigint() - startMap) / 1e6;
+        console.log(`brightness-mapping took ${durMap.toFixed(3)} ms`);
+
+        const durTotal = Number(process.hrtime.bigint() - startTotal) / 1e6;
+        console.log(`readPixels total took ${durTotal.toFixed(3)} ms`);
+
+        return { width, height, pixels };
+    }
+
+    async _readIHDR() {
+        const { SIGNATURE, SUPPORTED } = CONSTANTS.PNG;
+        const fh = await open(this.filePath, 'r');
+        const buf = Buffer.alloc(8 + 4 + 4 + 13 + 4);
+        await fh.read(buf, 0, buf.length, 0);
+        await fh.close();
+
+        if (!buf.slice(0, 8).equals(SIGNATURE)) {
+            throw new Error('Invalid PNG signature');
+        }
+
+        const ihdr = buf.slice(16, 16 + 13);
+        const width = ihdr.readUInt32BE(0);
+        const height = ihdr.readUInt32BE(4);
+        const bitDepth = ihdr.readUInt8(8);
+        const colorType = ihdr.readUInt8(9);
+
+        if (bitDepth !== SUPPORTED.BIT_DEPTH) {
+            throw new Error(`Only bitDepth ${SUPPORTED.BIT_DEPTH} supported`);
+        }
+
+        if (!SUPPORTED.COLOR_TYPES.includes(colorType)) {
+            throw new Error(`Unsupported colorType: ${colorType}`);
+        }
+
+        return { width, height, bitDepth, colorType };
+    }
+
+    async _extractAndInflateIDAT() {
+        let buffer = Buffer.alloc(0);
+        let expect = null;
+        let sigSkipped = false;
+        const parts = [];
+
+        const extractor = new Transform({
+            transform(chunk, _, cb) {
+                buffer = Buffer.concat([buffer, chunk]);
+
+                if (!sigSkipped && buffer.length >= 8) {
+                    buffer = buffer.slice(8);
+                    sigSkipped = true;
+                }
+
+                let offset = 0;
+
+                while (true) {
+                    if (!expect) {
+                        if (buffer.length < offset + 8) break;
+                        const length = buffer.readUInt32BE(offset);
+                        const type = buffer.toString('ascii', offset + 4, offset + 8);
+                        expect = { length, type };
+                        offset += 8;
+                    }
+
+                    const { length, type } = expect;
+                    if (buffer.length < offset + length + 4) break;
+
+                    const data = buffer.slice(offset, offset + length);
+                    if (type === 'IDAT') this.push(data);
+                    offset += length + 4;
+                    expect = null;
+                }
+                buffer = buffer.slice(offset);
+                cb();
+            }
+        });
+
+        const inflator = new Inflate();
+        const collector = new Writable({
+            write(chunk, __, cb) {
+                parts.push(chunk);
+                cb();
+            }
+        });
+
+        await pipeline(
+            createReadStream(this.filePath),
+            extractor,
+            inflator,
+            collector
+        );
+
+        return Buffer.concat(parts);
+    }
+
+    _reverseFilter(raw, width, height, bpp) {
+        const stride = width * bpp + 1;
+        const out = Buffer.allocUnsafe(width * height * bpp);
+
+        for (let y = 0; y < height; y++) {
+            const rowStart = y * stride;
+            const filter = raw[rowStart];
+            const row = raw.subarray(rowStart + 1, rowStart + stride);
+            const prevLine = y > 0 ? out.subarray((y - 1) * width * bpp, y * width * bpp) : null;
+
+            for (let i = 0; i < row.length; i++) {
+                const idx = y * width * bpp + i;
+                const x = row[i];
+                const a = i >= bpp ? out[idx - bpp] : 0;
+                const b = prevLine ? prevLine[i] : 0;
+                const c = prevLine && i >= bpp ? prevLine[i - bpp] : 0;
+                let recon;
+
+                switch (filter) {
+                    case 0: recon = x; break;
+                    case 1: recon = (x + a) & 0xFF; break;
+                    case 2: recon = (x + b) & 0xFF; break;
+                    case 3: recon = (x + Math.floor((a + b) / 2)) & 0xFF; break;
+                    case 4:
+                        const p = a + b - c;
+                        const pa = Math.abs(p - a);
+                        const pb = Math.abs(p - b);
+                        const pc = Math.abs(p - c);
+                        const pr = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+                        recon = (x + pr) & 0xFF;
+                        break;
+                    default:
+                        throw new Error(`Unsupported filter type: ${filter}`);
+                }
+
+                out[idx] = recon;
+            }
+        }
+
+        return out;
     }
 }
