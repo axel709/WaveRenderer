@@ -34,7 +34,7 @@ class Server {
             } else {
                 for (const imageName of pngFiles) {
                     const imagePath = path.join(this.baseInputDir, imageName);
-                    const outputWavPath = path.join(this.baseAudioDir, `converted_${imageName}.wav`);
+                    const outputWavPath = path.join(this.baseAudioDir, `C_${imageName.replace('.png', '.wav')}`);
                     console.log(`Processing ${imageName} to WAV...`);
 
                     const controller = new ConverterController(imagePath, outputWavPath);
@@ -50,7 +50,7 @@ class Server {
             } else {
                 for (const wavName of wavFiles) {
                     const wavPath = path.join(this.baseAudioDir, wavName);
-                    const outputPngPath = path.join(this.baseOutputDir, `reconstructed_${wavName.replace('.wav', '.png')}`);
+                    const outputPngPath = path.join(this.baseOutputDir, `R${wavName.replace('.wav', '.png')}`);
                     console.log(`Converting WAV ${wavName} to PNG...`);
 
                     const wavToPngConverter = new PNGFromWAVManager(wavPath, outputPngPath);
