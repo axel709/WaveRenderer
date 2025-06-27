@@ -14,6 +14,8 @@ export class PNGManager {
         try {
             const buffer = await fs.readFile(this.inputPath);
             const signature = buffer.subarray(0, 8);
+            const chunks = [];
+
             console.log(`File: ${this.inputPath}, Signature: ${signature.toString('hex')}`);
 
             if (!signature.equals(PNG_SIGNATURE)) {
@@ -48,8 +50,7 @@ export class PNGManager {
                 const type = buffer.subarray(offset + 4, offset + 8).toString();
 
                 if (type === 'IDAT') {
-                    const data = buffer.subarray(offset + 8, offset + 8 + length);
-                    idatData = Buffer.concat([idatData, data]);
+                    chunks.push(buffer.subarray(offset + 8, offset + 8 + length));
                 } else if (type === 'IEND') {
                     break;
                 }
@@ -57,6 +58,11 @@ export class PNGManager {
                 offset += length + 12;
             }
 
+            if (chunks.length === 0) {
+                throw new Error('No IDAT chunks found');
+            }
+
+            idatData = Buffer.concat(chunks);
             const decompressed = await inflateAsync(idatData);
             const bytesPerPixel = colorType === 0 ? 1 : colorType === 2 ? 3 : 4;
             const scanlineWidth = width * bytesPerPixel + 1;

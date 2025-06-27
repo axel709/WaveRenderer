@@ -1,78 +1,10 @@
 import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import zlib from 'zlib';
 import { promisify } from 'util';
-import { SAMPLE_RATE, PIXEL_DURATION, PNG_SIGNATURE, MARKER_FREQ_SCALE, PIXEL_FREQ_SCALE } from '../constants.js';
 import { crc32 } from 'zlib';
+import zlib from 'zlib';
+import { SAMPLE_RATE, PIXEL_DURATION, PNG_SIGNATURE, MARKER_FREQ_SCALE, PIXEL_FREQ_SCALE } from '../constants.js';
 
 const deflateAsync = promisify(zlib.deflate);
-
-function simpleFFT(signal, sampleRate, maxFreq) {
-    const N = signal.length;
-    let maxAmplitude = 0;
-    let dominantFreq = 0;
-
-    for (let k = 0; k < N / 2; k++) {
-        let real = 0;
-        let imag = 0;
-        const freq = (k * sampleRate) / N;
-
-        if (freq > maxFreq) break;
-        for (let n = 0; n < N; n++) {
-            const angle = (2 * Math.PI * k * n) / N;
-            real += signal[n] * Math.cos(angle);
-            imag -= signal[n] * Math.sin(angle);
-        }
-
-        const amplitude = Math.sqrt(real * real + imag * imag) / N;
-        if (amplitude > maxAmplitude) {
-            maxAmplitude = amplitude;
-            dominantFreq = freq;
-        }
-    }
-
-    return dominantFreq;
-}
-
-function paethPredictor(a, b, c) {
-    const p = a + b - c;
-    const pa = Math.abs(p - a);
-    const pb = Math.abs(p - b);
-    const pc = Math.abs(p - c);
-    if (pa <= pb && pa <= pc) return a;
-    if (pb <= pc) return b;
-    return c;
-}
-
-function applyFilter(filterType, current, previous, bpp, result, index) {
-    for (let i = 0; i < current.length; i++) {
-        const x = current[i];
-        let a = i >= bpp ? current[i - bpp] : 0;
-        let b = previous ? previous[i] : 0;
-        let c = previous && i >= bpp ? previous[i - bpp] : 0;
-
-        switch (filterType) {
-            case 0:
-                result[index + i] = x;
-                break;
-            case 1:
-                result[index + i] = (x - a) & 0xff;
-                break;
-            case 2:
-                result[index + i] = (x - b) & 0xff;
-                break;
-            case 3:
-                result[index + i] = (x - Math.floor((a + b) / 2)) & 0xff;
-                break;
-            case 4:
-                result[index + i] = (x - paethPredictor(a, b, c)) & 0xff;
-                break;
-            default:
-                throw new Error(`Invalid filter type: ${filterType}`);
-        }
-    }
-}
 
 export class PNGFromWAVManager {
     constructor(inputWavPath, outputPngPath) {
@@ -224,7 +156,7 @@ export class PNGFromWAVManager {
             result.frequency = period > 0 ? 1 / period : 0;
         } else {
             result.warnings.push(`${segmentName}: Insufficient zero crossings (${result.zeroCrossings}) for frequency calculation`);
-            result.frequency = simpleFFT(signal, sampleRate, maxFreq);
+            result.frequency = PNGFromWAVManager.simpleFFT(signal, sampleRate, maxFreq);
             result.warnings.push(`${segmentName}: Used FFT fallback, frequency = ${result.frequency.toFixed(2)} Hz`);
         }
 
@@ -250,7 +182,7 @@ export class PNGFromWAVManager {
                 currentScanline.writeUInt8(pixel.brightness, x * bytesPerPixel);
             }
 
-            applyFilter(filterType, currentScanline, previousScanline, bytesPerPixel, pixelData, offset);
+            PNGFromWAVManager.applyFilter(filterType, currentScanline, previousScanline, bytesPerPixel, pixelData, offset);
             previousScanline = currentScanline;
             offset += width * bytesPerPixel;
         }
@@ -282,6 +214,72 @@ export class PNGFromWAVManager {
         const crcBuffer = Buffer.alloc(4);
         crcBuffer.writeUInt32BE(crc, 0);
         return Buffer.concat([length, typeBuffer, data, crcBuffer]);
+    }
+
+    static paethPredictor(a, b, c) {
+        const p = a + b - c;
+        const pa = Math.abs(p - a);
+        const pb = Math.abs(p - b);
+        const pc = Math.abs(p - c);
+        if (pa <= pb && pa <= pc) return a;
+        if (pb <= pc) return b;
+        return c;
+    }
+
+    static simpleFFT(signal, sampleRate, maxFreq) {
+        const N = signal.length;
+        let maxAmplitude = 0;
+        let dominantFreq = 0;
+
+        for (let k = 0; k < N / 2; k++) {
+            let real = 0;
+            let imag = 0;
+            const freq = (k * sampleRate) / N;
+
+            if (freq > maxFreq) break;
+            for (let n = 0; n < N; n++) {
+                const angle = (2 * Math.PI * k * n) / N;
+                real += signal[n] * Math.cos(angle);
+                imag -= signal[n] * Math.sin(angle);
+            }
+
+            const amplitude = Math.sqrt(real * real + imag * imag) / N;
+            if (amplitude > maxAmplitude) {
+                maxAmplitude = amplitude;
+                dominantFreq = freq;
+            }
+        }
+
+        return dominantFreq;
+    }
+
+    static applyFilter(filterType, current, previous, bpp, result, index) {
+        for (let i = 0; i < current.length; i++) {
+            const x = current[i];
+            let a = i >= bpp ? current[i - bpp] : 0;
+            let b = previous ? previous[i] : 0;
+            let c = previous && i >= bpp ? previous[i - bpp] : 0;
+
+            switch (filterType) {
+                case 0:
+                    result[index + i] = x;
+                    break;
+                case 1:
+                    result[index + i] = (x - a) & 0xff;
+                    break;
+                case 2:
+                    result[index + i] = (x - b) & 0xff;
+                    break;
+                case 3:
+                    result[index + i] = (x - Math.floor((a + b) / 2)) & 0xff;
+                    break;
+                case 4:
+                    result[index + i] = (x - PNGFromWAVManager.paethPredictor(a, b, c)) & 0xff;
+                    break;
+                default:
+                    throw new Error(`Invalid filter type: ${filterType}`);
+            }
+        }
     }
 
     calculateCRC(data) {
