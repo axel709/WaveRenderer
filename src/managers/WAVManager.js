@@ -1,4 +1,4 @@
-import fs from 'fs/promises';
+import { writeFileSync } from 'fs';
 import { CONSTANTS } from '../constants.js';
 
 export class WAVManager {
@@ -7,62 +7,69 @@ export class WAVManager {
     }
 
     async generateWAV(width, height, pixels) {
-        try {
-            console.log(`Generating WAV: ${width}x${height}, ${pixels.length} pixels`);
-            const samplesPerMarker = Math.round(CONSTANTS.WAV.SAMPLE_RATE * 1);
-            const samplesPerPixel = Math.round(CONSTANTS.WAV.SAMPLE_RATE * CONSTANTS.WAV.PIXEL.DURATION);
-            const numSamples = 2 * samplesPerMarker + pixels.length * samplesPerPixel;
-            const bytesPerSample = 2;
-            const dataSize = numSamples * bytesPerSample;
-            const header = Buffer.alloc(44);
+        const sampleRate = CONSTANTS.WAV.SAMPLE_RATE;
+        const markerSampleCount = sampleRate;
+        const pixelSampleCount = Math.round(sampleRate * CONSTANTS.WAV.PIXEL.DURATION);
+        const totalSamples = markerSampleCount * 2 + pixels.length * pixelSampleCount;
+        const bytesPerSample = 2;
+        const dataSize = totalSamples * bytesPerSample;
+        const totalSize = 44 + dataSize;
 
-            header.write('RIFF', 0);
-            header.writeUInt32LE(36 + dataSize, 4);
-            header.write('WAVE', 8);
-            header.write('fmt ', 12);
-            header.writeUInt32LE(16, 16);
-            header.writeUInt16LE(1, 20);
-            header.writeUInt16LE(1, 22);
-            header.writeUInt32LE(CONSTANTS.WAV.SAMPLE_RATE, 24);
-            header.writeUInt32LE(CONSTANTS.WAV.SAMPLE_RATE * bytesPerSample, 28);
-            header.writeUInt16LE(bytesPerSample, 32);
-            header.writeUInt16LE(16, 34);
-            header.write('data', 36);
-            header.writeUInt32LE(dataSize, 40);
+        const buffer = Buffer.allocUnsafe(totalSize);
+        let offset = 0;
 
-            const audioData = Buffer.alloc(dataSize);
-            let sampleIndex = 0;
-            let phase = 0;
+        buffer.write('RIFF', offset); offset += 4;
+        buffer.writeUInt32LE(36 + dataSize, offset); offset += 4;
+        buffer.write('WAVE', offset); offset += 4;
+        buffer.write('fmt ', offset); offset += 4;
+        buffer.writeUInt32LE(16, offset); offset += 4;
+        buffer.writeUInt16LE(1, offset); offset += 2;
+        buffer.writeUInt16LE(1, offset); offset += 2;
+        buffer.writeUInt32LE(sampleRate, offset); offset += 4;
+        buffer.writeUInt32LE(sampleRate * bytesPerSample, offset); offset += 4;
+        buffer.writeUInt16LE(bytesPerSample, offset); offset += 2;
+        buffer.writeUInt16LE(16, offset); offset += 2;
+        buffer.write('data', offset); offset += 4;
+        buffer.writeUInt32LE(dataSize, offset); offset += 4;
 
-            const generateTone = (frequency, numSamples, amplitude = 0.8) => {
-                for (let i = 0; i < numSamples; i++) {
-                    const t = i / CONSTANTS.WAV.SAMPLE_RATE;
-                    const sample = frequency === 0 ? 0 : Math.sin(phase + 2 * Math.PI * frequency * t) * amplitude;
-                    audioData.writeInt16LE(Math.round(sample * 32767), sampleIndex);
-                    sampleIndex += bytesPerSample;
-                }
+        const amplitudeFactor = Math.floor(0.8 * 32767);
+        let phase = 0;
 
-                if (frequency !== 0) {
-                    phase += 2 * Math.PI * frequency * (numSamples / CONSTANTS.WAV.SAMPLE_RATE);
-                    phase %= 2 * Math.PI;
-                }
-            };
-
-            const widthFrequency = width * CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE;
-            generateTone(widthFrequency, samplesPerMarker);
-
-            const heightFrequency = height * CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE;
-            generateTone(heightFrequency, samplesPerMarker);
-
-            for (const pixel of pixels) {
-                const frequency = pixel.brightness * CONSTANTS.WAV.PIXEL.SCALE;
-                generateTone(frequency, samplesPerPixel);
+        const generateTone = (frequency, count) => {
+            if (frequency === 0) {
+                buffer.fill(0, offset, offset + count * 2);
+                offset += count * 2;
+                return;
             }
 
-            console.log(`Writing WAV file to ${this.outputPath}`);
-            await fs.writeFile(this.outputPath, Buffer.concat([header, audioData]));
-        } catch (err) {
-            throw new Error(`Failed to generate WAV: ${err.message}`);
+            const phaseDelta = 2 * Math.PI * frequency / sampleRate;
+            const cosDelta = Math.cos(phaseDelta);
+            let previousSample = Math.sin(phase - phaseDelta);
+            let currentSample = Math.sin(phase);
+
+            for (let i = 0; i < count; i++) {
+                const nextSample = 2 * cosDelta * currentSample - previousSample;
+                buffer.writeInt16LE((currentSample * amplitudeFactor) | 0, offset);
+                offset += 2;
+                previousSample = currentSample;
+                currentSample = nextSample;
+            }
+
+            phase = (phase + phaseDelta * count) % (2 * Math.PI);
+        };
+
+        const widthFrequency = width * CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE;
+        const heightFrequency = height * CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE;
+        generateTone(widthFrequency, markerSampleCount);
+        generateTone(heightFrequency, markerSampleCount);
+
+        const pixelScale = CONSTANTS.WAV.PIXEL.SCALE;
+        
+        for (let i = 0; i < pixels.length; i++) {
+            const frequency = pixels[i].brightness * pixelScale;
+            generateTone(frequency, pixelSampleCount);
         }
+
+        writeFileSync(this.outputPath, buffer);
     }
 }

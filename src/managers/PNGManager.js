@@ -124,6 +124,7 @@ export class PNGManager {
                     offset += length + 4;
                     expect = null;
                 }
+                
                 buffer = buffer.slice(offset);
                 cb();
             }
