@@ -16,8 +16,6 @@ export class PNGManager {
             const signature = buffer.subarray(0, 8);
             const chunks = [];
 
-            console.log(`File: ${this.inputPath}, Signature: ${signature.toString('hex')}`);
-
             if (!signature.equals(PNG_SIGNATURE)) {
                 throw new Error('Invalid PNG file signature');
             }
@@ -67,7 +65,6 @@ export class PNGManager {
             const bytesPerPixel = colorType === 0 ? 1 : colorType === 2 ? 3 : 4;
             const scanlineWidth = width * bytesPerPixel + 1;
             const expectedBytes = height * scanlineWidth;
-            console.log(`File: ${this.inputPath}, Decompressed IDAT size: ${decompressed.length}, Expected: ${expectedBytes}`);
 
             if (decompressed.length < expectedBytes) {
                 throw new Error('Decompressed IDAT data too small');
@@ -83,8 +80,10 @@ export class PNGManager {
                 const pa = Math.abs(p - a);
                 const pb = Math.abs(p - b);
                 const pc = Math.abs(p - c);
+
                 if (pa <= pb && pa <= pc) return a;
                 if (pb <= pc) return b;
+
                 return c;
             };
 
@@ -121,6 +120,7 @@ export class PNGManager {
                 const filterType = decompressed[srcIndex++];
                 const currentScanline = decompressed.subarray(srcIndex, srcIndex + width * bytesPerPixel);
                 applyReverseFilter(filterType, currentScanline, previousScanline, bytesPerPixel, pixelData, destIndex);
+                
                 previousScanline = pixelData.subarray(destIndex, destIndex + width * bytesPerPixel);
                 srcIndex += width * bytesPerPixel;
                 destIndex += width * bytesPerPixel;

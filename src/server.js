@@ -39,7 +39,7 @@ class Server {
 
                     const controller = new ConverterController(imagePath, outputWavPath);
                     await controller.run();
-                    console.log(`Finished processing ${imageName}, WAV saved at ${outputWavPath}`);
+                    console.log(`Finished processing ${imageName}, WAV saved at ${outputWavPath}\n`);
                 }
             }
 
@@ -55,7 +55,7 @@ class Server {
 
                     const wavToPngConverter = new PNGFromWAVManager(wavPath, outputPngPath);
                     await wavToPngConverter.convert();
-                    console.log(`Finished converting WAV to PNG, saved at ${outputPngPath}`);
+                    console.log(`Finished converting WAV to PNG, saved at ${outputPngPath}\n`);
                 }
             }
         } catch (err) {

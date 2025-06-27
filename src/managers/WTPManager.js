@@ -14,9 +14,9 @@ export class PNGFromWAVManager {
 
     async convert() {
         try {
-            console.log(`Starting WAV to PNG conversion for ${this.inputWavPath}`);
             const { width, height, pixels } = await this.analyzeWAV();
             console.log(`Writing PNG with dimensions ${width}x${height}, ${pixels.length} pixels`);
+
             await this.writePNG(width, height, pixels);
             console.log(`PNG generated at ${this.outputPngPath}`);
         } catch (err) {
@@ -33,7 +33,6 @@ export class PNGFromWAVManager {
         }
 
         const sampleRate = buffer.readUInt32LE(24);
-        console.log(`Sample rate: ${sampleRate} Hz`);
         if (sampleRate !== SAMPLE_RATE) {
             throw new Error(`Unsupported sample rate: ${sampleRate}, expected ${SAMPLE_RATE}`);
         }
@@ -42,9 +41,6 @@ export class PNGFromWAVManager {
         while (offset < buffer.length) {
             const chunkId = buffer.toString('ascii', offset, offset + 4);
             const chunkSize = buffer.readUInt32LE(offset + 4);
-
-            console.log(`Found chunk: ${chunkId}, size: ${chunkSize}`);
-
             if (chunkId === 'data') {
                 break;
             }
@@ -58,26 +54,16 @@ export class PNGFromWAVManager {
 
         const dataStart = offset + 8;
         const dataSize = buffer.readUInt32LE(offset + 4);
-        console.log(`Data chunk found at offset ${dataStart}, size: ${dataSize} bytes`);
-
         const samples = buffer.subarray(dataStart, dataStart + dataSize);
         const samplesPerSecond = SAMPLE_RATE;
         const samplesPerPixel = Math.round(SAMPLE_RATE * PIXEL_DURATION);
-        console.log(`Samples per pixel: ${samplesPerPixel} (duration: ${PIXEL_DURATION}s)`);
-
         const marker1Samples = samples.subarray(0, samplesPerSecond * 2);
         const widthAnalysis = this.analyzeSegment(marker1Samples, SAMPLE_RATE, 'Width Marker', 10000);
-        console.log(`Width Marker: Frequency = ${widthAnalysis.frequency.toFixed(2)} Hz, Zero Crossings = ${widthAnalysis.zeroCrossings}, Max Amplitude = ${widthAnalysis.maxAmplitude}, Warnings: ${widthAnalysis.warnings.join('; ')}`);
-        
         const width = Math.round(widthAnalysis.frequency / MARKER_FREQ_SCALE);
-        console.log(`Extracted width: ${width} pixels`);
 
         const marker2Samples = samples.subarray(samplesPerSecond * 2, samplesPerSecond * 4);
         const heightAnalysis = this.analyzeSegment(marker2Samples, SAMPLE_RATE, 'Height Marker', 10000);
-        console.log(`Height Marker: Frequency = ${heightAnalysis.frequency.toFixed(2)} Hz, Zero Crossings = ${heightAnalysis.zeroCrossings}, Max Amplitude = ${heightAnalysis.maxAmplitude}, Warnings: ${heightAnalysis.warnings.join('; ')}`);
-        
         const height = Math.round(heightAnalysis.frequency / MARKER_FREQ_SCALE);
-        console.log(`Extracted height: ${height} pixels`);
         console.log(`Extracting pixel brightness values for ${width}x${height} image`);
 
         const pixels = [];

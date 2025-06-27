@@ -49,11 +49,9 @@ export class WAVManager {
             };
 
             const widthFrequency = width * MARKER_FREQ_SCALE;
-            console.log(`Encoding width: ${width} pixels -> ${widthFrequency} Hz`);
             generateTone(widthFrequency, samplesPerMarker);
 
             const heightFrequency = height * MARKER_FREQ_SCALE;
-            console.log(`Encoding height: ${height} pixels -> ${heightFrequency} Hz`);
             generateTone(heightFrequency, samplesPerMarker);
 
             for (const pixel of pixels) {
