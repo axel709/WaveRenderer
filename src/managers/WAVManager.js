@@ -9,8 +9,8 @@ export class WAVManager {
     async generateWAV(width, height, pixels) {
         const sampleRate = CONSTANTS.WAV.SAMPLE_RATE;
         const markerSampleCount = sampleRate;
-        const pixelSampleCount = Math.round(sampleRate * CONSTANTS.WAV.PIXEL.DURATION);
-        const totalSamples = markerSampleCount * 2 + pixels.length * pixelSampleCount;
+        const pixelSampleCount = Math.round(sampleRate * CONSTANTS.WAV.PIXEL.DURATION_PER_CHANNEL);
+        const totalSamples = markerSampleCount * 2 + pixels.length * pixelSampleCount * 4;
         const bytesPerSample = 2;
         const dataSize = totalSamples * bytesPerSample;
         const totalSize = 44 + dataSize;
@@ -63,11 +63,12 @@ export class WAVManager {
         generateTone(widthFrequency, markerSampleCount);
         generateTone(heightFrequency, markerSampleCount);
 
-        const pixelScale = CONSTANTS.WAV.PIXEL.SCALE;
-        
         for (let i = 0; i < pixels.length; i++) {
-            const frequency = pixels[i].brightness * pixelScale;
-            generateTone(frequency, pixelSampleCount);
+            const pixel = pixels[i];
+            generateTone(pixel.r * CONSTANTS.WAV.PIXEL.SCALE, pixelSampleCount);
+            generateTone(pixel.g * CONSTANTS.WAV.PIXEL.SCALE, pixelSampleCount);
+            generateTone(pixel.b * CONSTANTS.WAV.PIXEL.SCALE, pixelSampleCount);
+            generateTone(pixel.a * CONSTANTS.WAV.PIXEL.SCALE, pixelSampleCount);
         }
 
         writeFileSync(this.outputPath, buffer);

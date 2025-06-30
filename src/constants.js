@@ -22,11 +22,13 @@ export const CONSTANTS = {
         FREQUENCIES: {
             MIN: 0,
             MAX: 255,
-            MARKER_SCALE: 10
+            MARKER_SCALE: 10,
+            CHANNEL_SCALE: 10
         },
 
         PIXEL: {
-            DURATION: 0.005,
+            DURATION_PER_CHANNEL: 0.005,
+            DURATION: 0.005 * 4,
             SCALE: 10
         }
     }
