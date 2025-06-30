@@ -29,9 +29,10 @@ export class PNGFromWAVManager {
         return (c ^ 0xFFFFFFFF) >>> 0;
     }
 
+
     async convert() {
-        const { width, height, rgbaArr } = await this.analyzeWAV();
-        this.writePNG(width, height, rgbaArr);
+        const { width, height, brightnessArr } = await this.analyzeWAV();
+        this.writePNG(width, height, brightnessArr);
     }
 
     async analyzeWAV() {
@@ -66,7 +67,7 @@ export class PNGFromWAVManager {
         const samples = buf.subarray(dataStart, dataStart + dataSize);
 
         const sps = CONSTANTS.WAV.SAMPLE_RATE;
-        const spp = Math.round(sps * CONSTANTS.WAV.PIXEL.DURATION_PER_CHANNEL);
+        const spp = Math.round(sps * CONSTANTS.WAV.PIXEL.DURATION);
 
         const mk1 = samples.subarray(0, sps * 2);
         const mk2 = samples.subarray(sps * 2, sps * 4);
@@ -75,21 +76,17 @@ export class PNGFromWAVManager {
         const width = Math.round(wHz);
         const height = Math.round(hHz);
 
-        const rgbaArr = new Uint8Array(width * height * 4);
+        const brightnessArr = new Uint8Array(width * height);
         let ptr = 0;
 
-        for (let i = sps * 4; ptr < rgbaArr.length; i += spp * 2 * 4, ptr += 4) {
-            const segR = samples.subarray(i, i + spp * 2);
-            const segG = samples.subarray(i + spp * 2, i + spp * 2 * 2);
-            const segB = samples.subarray(i + spp * 2 * 2, i + spp * 2 * 3);
-            const segA = samples.subarray(i + spp * 2 * 3, i + spp * 2 * 4);
-            rgbaArr[ptr] = Math.min(255, Math.max(0, Math.round(this._freqFromSegment(segR, sps) / CONSTANTS.WAV.PIXEL.SCALE)));
-            rgbaArr[ptr + 1] = Math.min(255, Math.max(0, Math.round(this._freqFromSegment(segG, sps) / CONSTANTS.WAV.PIXEL.SCALE)));
-            rgbaArr[ptr + 2] = Math.min(255, Math.max(0, Math.round(this._freqFromSegment(segB, sps) / CONSTANTS.WAV.PIXEL.SCALE)));
-            rgbaArr[ptr + 3] = Math.min(255, Math.max(0, Math.round(this._freqFromSegment(segA, sps) / CONSTANTS.WAV.PIXEL.SCALE)));
+        for (let i = sps * 4; ptr < brightnessArr.length; i += spp * 2, ptr++) {
+            const seg = samples.subarray(i, i + spp * 2);
+            const hz = this._freqFromSegment(seg, sps);
+            const b = Math.min(255, Math.max(0, Math.round(hz / CONSTANTS.WAV.PIXEL.SCALE)));
+            brightnessArr[ptr] = b;
         }
 
-        return { width, height, rgbaArr };
+        return { width, height, brightnessArr };
     }
 
     _freqFromSegment(seg, sampleRate) {
@@ -152,21 +149,18 @@ export class PNGFromWAVManager {
         return bestF;
     }
 
-    writePNG(width, height, rgbaArr) {
-        const scanW = width * 4 + 1;
+    writePNG(width, height, brightnessArr) {
+        const scanW = width + 1;
         const dataSize = scanW * height;
         const raw = Buffer.allocUnsafe(dataSize);
         let p = 0;
 
         for (let y = 0; y < height; y++) {
             raw[p++] = 0;
-            const base = y * width * 4;
-            for (let x = 0; x < width; x++) {
-                const idx = base + x * 4;
-                raw[p++] = rgbaArr[idx];
-                raw[p++] = rgbaArr[idx + 1];
-                raw[p++] = rgbaArr[idx + 2];
-                raw[p++] = rgbaArr[idx + 3];
+            const base = y * width;
+            
+            for (let x = 0; x < width; x++, p++) {
+                raw[p] = brightnessArr[base + x];
             }
         }
 
@@ -185,11 +179,10 @@ export class PNGFromWAVManager {
         out.writeUInt32BE(width, off); off += 4;
         out.writeUInt32BE(height, off); off += 4;
         out[off++] = 8;
-        out[off++] = 6;
         out[off++] = 0;
         out[off++] = 0;
         out[off++] = 0;
-
+        out[off++] = 0;
         const ihdrCrc = PNGFromWAVManager.crc32(out.subarray(off - (4 + ihdrLen), off));
         out.writeUInt32BE(ihdrCrc, off); off += 4;
 

@@ -37,31 +37,35 @@ export class PNGManager {
 
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
-                let r, g, b, a;
+                let brightness;
 
                 if (colorType === 0) {
-                    r = g = b = pixelBuf[ptr++];
-                    a = 255; // Grayscale, assume opaque
-                } else if (colorType === 2) {
-                    r = pixelBuf[ptr++];
-                    g = pixelBuf[ptr++];
-                    b = pixelBuf[ptr++];
-                    a = 255; // RGB, assume opaque
-                } else if (colorType === 6) {
-                    r = pixelBuf[ptr++];
-                    g = pixelBuf[ptr++];
-                    b = pixelBuf[ptr++];
-                    a = pixelBuf[ptr++];
+                    brightness = pixelBuf[ptr++];
                 } else {
-                    throw new Error(`Unhandled colorType: ${colorType}`);
+                    const r = pixelBuf[ptr++];
+                    const g = pixelBuf[ptr++];
+                    const b = pixelBuf[ptr++];
+                    
+                    let a = 255;
+
+                    if (colorType === 6) {
+                        a = pixelBuf[ptr++];
+
+                        if (a === 0) {
+                            pixels.push({ x, y, brightness: 255 });
+                            continue;
+                        }
+                    }
+
+                    brightness = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
                 }
 
-                pixels.push({ x, y, r, g, b, a });
+                pixels.push({ x, y, brightness });
             }
         }
 
         const durMap = Number(process.hrtime.bigint() - startMap) / 1e6;
-        console.log(`pixel-mapping took ${durMap.toFixed(3)} ms`);
+        console.log(`brightness-mapping took ${durMap.toFixed(3)} ms`);
 
         const durTotal = Number(process.hrtime.bigint() - startTotal) / 1e6;
         console.log(`readPixels total took ${durTotal.toFixed(3)} ms`);
