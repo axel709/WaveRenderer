@@ -26,8 +26,7 @@ export const CONSTANTS = {
         },
 
         PIXEL: {
-            // DURATION: 0.005, // Oude waarde, veroorzaakte afrondingsproblemen
-            SAMPLES_PER_COMPONENT: 220, // Expliciet aantal samples per pixel component
+            SAMPLES_PER_COMPONENT: 220,
             SCALE: 10
         }
     }
