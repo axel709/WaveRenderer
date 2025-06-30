@@ -1,10 +1,7 @@
-import fs from 'fs/promises';
-import { promisify } from 'util';
-import { crc32 } from 'zlib';
-import zlib from 'zlib';
 import { CONSTANTS } from '../constants.js';
-
-const deflateAsync = promisify(zlib.deflate);
+import { writeFileSync } from 'fs';
+import fs from 'fs/promises';
+import zlib from 'zlib';
 
 export class PNGFromWAVManager {
     constructor(inputWavPath, outputPngPath) {
@@ -12,263 +9,194 @@ export class PNGFromWAVManager {
         this.outputPngPath = outputPngPath;
     }
 
-    async convert() {
-        try {
-            const { width, height, pixels } = await this.analyzeWAV();
-            console.log(`Writing PNG with dimensions ${width}x${height}, ${pixels.length} pixels`);
-
-            await this.writePNG(width, height, pixels);
-            console.log(`PNG generated at ${this.outputPngPath}`);
-        } catch (err) {
-            throw new Error(`Failed to convert WAV to PNG: ${err.message}`);
+    static _crcTable = (() => {
+        const table = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+            let c = n;
+            for (let k = 0; k < 8; k++) {
+                c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            }
+            table[n] = c >>> 0;
         }
+        return table;
+    })();
+
+    static crc32(buf) {
+        let c = 0xFFFFFFFF;
+        for (let i = 0; i < buf.length; i++) {
+            c = (c >>> 8) ^ PNGFromWAVManager._crcTable[(c ^ buf[i]) & 0xFF];
+        }
+        return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+
+
+    async convert() {
+        const { width, height, brightnessArr } = await this.analyzeWAV();
+        this.writePNG(width, height, brightnessArr);
     }
 
     async analyzeWAV() {
-        console.log(`Reading WAV file: ${this.inputWavPath}`);
-        const buffer = await fs.readFile(this.inputWavPath);
+        const buf = await fs.readFile(this.inputWavPath);
 
-        if (buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
-            throw new Error('Invalid WAV file signature');
+        if (
+            buf.toString('ascii', 0, 4) !== 'RIFF' ||
+            buf.toString('ascii', 8, 12) !== 'WAVE'
+        ) {
+            throw new Error('Invalid WAV file');
         }
 
-        const sampleRate = buffer.readUInt32LE(24);
-        if (sampleRate !== CONSTANTS.WAV.SAMPLE_RATE) {
-            throw new Error(`Unsupported sample rate: ${sampleRate}, expected ${CONSTANTS.WAV.SAMPLE_RATE}`);
+        const sr = buf.readUInt32LE(24);
+
+        if (sr !== CONSTANTS.WAV.SAMPLE_RATE) {
+            throw new Error(`Unsupported sample rate ${sr}`);
         }
 
         let offset = 12;
-        while (offset < buffer.length) {
-            const chunkId = buffer.toString('ascii', offset, offset + 4);
-            const chunkSize = buffer.readUInt32LE(offset + 4);
-            if (chunkId === 'data') {
-                break;
-            }
 
-            offset += 8 + chunkSize;
+        while (offset < buf.length) {
+            const id = buf.toString('ascii', offset, offset + 4);
+            const size = buf.readUInt32LE(offset + 4);
+            if (id === 'data') break;
+            offset += 8 + size;
         }
 
-        if (offset >= buffer.length) {
-            throw new Error('No data chunk found');
-        }
+        if (offset >= buf.length) throw new Error('No data chunk');
 
         const dataStart = offset + 8;
-        const dataSize = buffer.readUInt32LE(offset + 4);
-        const samples = buffer.subarray(dataStart, dataStart + dataSize);
-        const samplesPerSecond = CONSTANTS.WAV.SAMPLE_RATE;
-        const samplesPerPixel = Math.round(CONSTANTS.WAV.SAMPLE_RATE * CONSTANTS.WAV.PIXEL.DURATION);
-        const marker1Samples = samples.subarray(0, samplesPerSecond * 2);
-        const widthAnalysis = this.analyzeSegment(marker1Samples, CONSTANTS.WAV.SAMPLE_RATE, 'Width Marker', 10000);
-        const width = Math.round(widthAnalysis.frequency / CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE);
+        const dataSize = buf.readUInt32LE(offset + 4);
+        const samples = buf.subarray(dataStart, dataStart + dataSize);
 
-        const marker2Samples = samples.subarray(samplesPerSecond * 2, samplesPerSecond * 4);
-        const heightAnalysis = this.analyzeSegment(marker2Samples, CONSTANTS.WAV.SAMPLE_RATE, 'Height Marker', 10000);
-        const height = Math.round(heightAnalysis.frequency / CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE);
-        console.log(`Extracting pixel brightness values for ${width}x${height} image`);
+        const sps = CONSTANTS.WAV.SAMPLE_RATE;
+        const spp = Math.round(sps * CONSTANTS.WAV.PIXEL.DURATION);
 
-        const pixels = [];
-        for (let i = samplesPerSecond * 4; i < samples.length; i += samplesPerPixel * 2) {
-            const segmentSamples = samples.subarray(i, Math.min(i + samplesPerPixel * 2, samples.length));
-            const index = (i - samplesPerSecond * 4) / (samplesPerPixel * 2);
-            const x = index % width;
-            const y = Math.floor(index / width);
-            const analysis = this.analyzeSegment(segmentSamples, CONSTANTS.WAV.SAMPLE_RATE, `Pixel (${x}, ${y})`, 255 * CONSTANTS.WAV.PIXEL.SCALE);
-            const frequency = analysis.frequency;
-            const brightness = Math.max(0, Math.min(255, Math.round(frequency / CONSTANTS.WAV.PIXEL.SCALE)));
-            pixels.push({ x, y, brightness });
+        const mk1 = samples.subarray(0, sps * 2);
+        const mk2 = samples.subarray(sps * 2, sps * 4);
+        const wHz = this._freqFromSegment(mk1, sps) / CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE;
+        const hHz = this._freqFromSegment(mk2, sps) / CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE;
+        const width = Math.round(wHz);
+        const height = Math.round(hHz);
+
+        const brightnessArr = new Uint8Array(width * height);
+        let ptr = 0;
+
+        for (let i = sps * 4; ptr < brightnessArr.length; i += spp * 2, ptr++) {
+            const seg = samples.subarray(i, i + spp * 2);
+            const hz = this._freqFromSegment(seg, sps);
+            const b = Math.min(255, Math.max(0, Math.round(hz / CONSTANTS.WAV.PIXEL.SCALE)));
+            brightnessArr[ptr] = b;
         }
 
-        console.log(`Extracted ${pixels.length} pixels`);
-        return { width, height, pixels };
+        return { width, height, brightnessArr };
     }
 
-    analyzeSegment(samples, sampleRate, segmentName = 'Segment', maxFreq = 255) {
-        const result = {
-            frequency: 0,
-            maxAmplitude: 0,
-            zeroCrossings: 0,
-            warnings: [],
-        };
+    _freqFromSegment(seg, sampleRate) {
+        const N = seg.length >> 1;
+        let maxAmp = 0, prev = 0, zc = 0, t0 = -1, t1 = -1;
 
-        if (samples.length < 4) {
-            result.warnings.push(`${segmentName}: Segment too short (${samples.length / 2} samples) for frequency analysis`);
-            console.log(`${segmentName}: ${result.warnings[0]}`);
-            return result;
+        for (let i = 0; i < seg.length; i += 2) {
+            const v = seg.readInt16LE(i);
+            const av = Math.abs(v);
+            if (av > maxAmp) maxAmp = av;
         }
 
-        const sampleCount = samples.length / 2;
-        const duration = sampleCount / sampleRate;
-        const amplitudeThreshold = 50;
-        let previousSample = 0;
-        let firstZeroCrossingTime = -1;
-        let lastZeroCrossingTime = -1;
+        if (maxAmp < 50) return 0;
 
-        const signal = new Array(sampleCount);
-        for (let i = 0; i < samples.length; i += 2) {
-            signal[i / 2] = samples.readInt16LE(i) / 32768;
-        }
+        for (let i = 0, j = 0; i < seg.length; i += 2, j++) {
+            const v = seg.readInt16LE(i);
 
-        for (let i = 0; i < samples.length; i += 2) {
-            const sample = Math.abs(samples.readInt16LE(i));
-            if (sample > result.maxAmplitude) {
-                result.maxAmplitude = sample;
-            }
-        }
-
-        if (result.maxAmplitude < amplitudeThreshold) {
-            return result;
-        }
-
-        for (let i = 0; i < samples.length; i += 2) {
-            const sample = samples.readInt16LE(i);
-
-            if (Math.abs(sample) < amplitudeThreshold) continue;
-            if ((previousSample <= 0 && sample > 0) || (previousSample > 0 && sample <= 0)) {
-                result.zeroCrossings++;
-                const time = (i / 2) / sampleRate;
-
-                if (firstZeroCrossingTime === -1) {
-                    firstZeroCrossingTime = time;
-                }
-
-                lastZeroCrossingTime = time;
+            if ((prev <= 0 && v > 0) || (prev > 0 && v <= 0)) {
+                if (t0 < 0) t0 = j;
+                t1 = j;
+                zc++;
             }
 
-            previousSample = sample;
+            prev = v;
         }
 
-        if (result.zeroCrossings >= 4) {
-            const period = (lastZeroCrossingTime - firstZeroCrossingTime) / ((result.zeroCrossings / 2) - 1);
-            result.frequency = period > 0 ? 1 / period : 0;
-        } else {
-            result.warnings.push(`${segmentName}: Insufficient zero crossings (${result.zeroCrossings}) for frequency calculation`);
-            result.frequency = PNGFromWAVManager.simpleFFT(signal, sampleRate, maxFreq);
-            result.warnings.push(`${segmentName}: Used FFT fallback, frequency = ${result.frequency.toFixed(2)} Hz`);
+        if (zc >= 4) {
+            const period = (t1 - t0) / (sampleRate * ((zc >> 1) - 1));
+            return period > 0 ? 1 / period : 0;
         }
 
-        return result;
-    }
+        const signal = new Float32Array(N);
 
-    async writePNG(width, height, pixels) {
-        const bytesPerPixel = 1;
-        const scanlineWidth = width * bytesPerPixel + 1;
-        const dataLength = height * scanlineWidth;
-        const pixelData = Buffer.alloc(dataLength);
-        let offset = 0;
-
-        let previousScanline = null;
-        for (let y = 0; y < height; y++) {
-            const filterType = 4;
-            pixelData.writeUInt8(filterType, offset);
-            offset++;
-
-            const currentScanline = Buffer.alloc(width * bytesPerPixel);
-            for (let x = 0; x < width; x++) {
-                const pixel = pixels.find(p => p.x === x && p.y === y) || { brightness: 0 };
-                currentScanline.writeUInt8(pixel.brightness, x * bytesPerPixel);
-            }
-
-            PNGFromWAVManager.applyFilter(filterType, currentScanline, previousScanline, bytesPerPixel, pixelData, offset);
-            previousScanline = currentScanline;
-            offset += width * bytesPerPixel;
+        for (let i = 0, j = 0; i < seg.length; i += 2, j++) {
+            signal[j] = seg.readInt16LE(i) / 32768;
         }
 
-        const compressedData = await deflateAsync(pixelData);
-        const ihdrData = Buffer.alloc(13);
-
-        ihdrData.writeUInt32BE(width, 0);
-        ihdrData.writeUInt32BE(height, 4);
-        ihdrData.writeUInt8(8, 8);
-        ihdrData.writeUInt8(0, 9);
-        ihdrData.writeUInt8(0, 10);
-        ihdrData.writeUInt8(0, 11);
-        ihdrData.writeUInt8(0, 12);
-
-        const ihdrChunk = this.createChunk('IHDR', ihdrData);
-        const idatChunk = this.createChunk('IDAT', compressedData);
-        const iendChunk = this.createChunk('IEND', Buffer.alloc(0));
-        const fileData = Buffer.concat([CONSTANTS.PNG.SIGNATURE, ihdrChunk, idatChunk, iendChunk]);
-        await fs.writeFile(this.outputPngPath, fileData);
+        return PNGFromWAVManager.simpleFFT(signal, sampleRate, 255 * CONSTANTS.WAV.PIXEL.SCALE);
     }
 
-    createChunk(type, data) {
-        const length = Buffer.alloc(4);
-        length.writeUInt32BE(data.length, 0);
-        const typeBuffer = Buffer.from(type);
-        const crcData = Buffer.concat([typeBuffer, data]);
-        const crc = this.calculateCRC(crcData);
-        const crcBuffer = Buffer.alloc(4);
-        crcBuffer.writeUInt32BE(crc, 0);
-        return Buffer.concat([length, typeBuffer, data, crcBuffer]);
-    }
-
-    static paethPredictor(a, b, c) {
-        const p = a + b - c;
-        const pa = Math.abs(p - a);
-        const pb = Math.abs(p - b);
-        const pc = Math.abs(p - c);
-        if (pa <= pb && pa <= pc) return a;
-        if (pb <= pc) return b;
-        return c;
-    }
-
-    static simpleFFT(signal, sampleRate, maxFreq) {
+    static simpleFFT(signal, sr, maxF) {
         const N = signal.length;
-        let maxAmplitude = 0;
-        let dominantFreq = 0;
+        let bestAmp = 0, bestF = 0;
 
         for (let k = 0; k < N / 2; k++) {
-            let real = 0;
-            let imag = 0;
-            const freq = (k * sampleRate) / N;
+            const f = k * sr / N;
+            if (f > maxF) break;
+            let re = 0, im = 0;
 
-            if (freq > maxFreq) break;
             for (let n = 0; n < N; n++) {
-                const angle = (2 * Math.PI * k * n) / N;
-                real += signal[n] * Math.cos(angle);
-                imag -= signal[n] * Math.sin(angle);
+                const a = (2 * Math.PI * k * n) / N;
+                re += signal[n] * Math.cos(a);
+                im -= signal[n] * Math.sin(a);
             }
 
-            const amplitude = Math.sqrt(real * real + imag * imag) / N;
-            if (amplitude > maxAmplitude) {
-                maxAmplitude = amplitude;
-                dominantFreq = freq;
+            const amp = Math.hypot(re, im);
+            if (amp > bestAmp) bestAmp = amp, bestF = f;
+        }
+
+        return bestF;
+    }
+
+    writePNG(width, height, brightnessArr) {
+        const scanW = width + 1;
+        const dataSize = scanW * height;
+        const raw = Buffer.allocUnsafe(dataSize);
+        let p = 0;
+
+        for (let y = 0; y < height; y++) {
+            raw[p++] = 0;
+            const base = y * width;
+            
+            for (let x = 0; x < width; x++, p++) {
+                raw[p] = brightnessArr[base + x];
             }
         }
 
-        return dominantFreq;
-    }
+        const comp = zlib.deflateSync(raw, { level: zlib.constants.Z_BEST_SPEED });
 
-    static applyFilter(filterType, current, previous, bpp, result, index) {
-        for (let i = 0; i < current.length; i++) {
-            const x = current[i];
-            let a = i >= bpp ? current[i - bpp] : 0;
-            let b = previous ? previous[i] : 0;
-            let c = previous && i >= bpp ? previous[i - bpp] : 0;
+        const ihdrLen = 13;
+        const idatLen = comp.length;
+        const total = 8 + (4 + 4 + ihdrLen + 4) + (4 + 4 + idatLen + 4) + (4 + 4 + 0 + 4);
+        const out = Buffer.allocUnsafe(total);
+        let off = 0;
 
-            switch (filterType) {
-                case 0:
-                    result[index + i] = x;
-                    break;
-                case 1:
-                    result[index + i] = (x - a) & 0xff;
-                    break;
-                case 2:
-                    result[index + i] = (x - b) & 0xff;
-                    break;
-                case 3:
-                    result[index + i] = (x - Math.floor((a + b) / 2)) & 0xff;
-                    break;
-                case 4:
-                    result[index + i] = (x - PNGFromWAVManager.paethPredictor(a, b, c)) & 0xff;
-                    break;
-                default:
-                    throw new Error(`Invalid filter type: ${filterType}`);
-            }
-        }
-    }
+        CONSTANTS.PNG.SIGNATURE.copy(out, off); off += 8;
 
-    calculateCRC(data) {
-        return crc32(data);
+        out.writeUInt32BE(ihdrLen, off); off += 4;
+        out.write('IHDR', off); off += 4;
+        out.writeUInt32BE(width, off); off += 4;
+        out.writeUInt32BE(height, off); off += 4;
+        out[off++] = 8;
+        out[off++] = 0;
+        out[off++] = 0;
+        out[off++] = 0;
+        out[off++] = 0;
+        const ihdrCrc = PNGFromWAVManager.crc32(out.subarray(off - (4 + ihdrLen), off));
+        out.writeUInt32BE(ihdrCrc, off); off += 4;
+
+        out.writeUInt32BE(idatLen, off); off += 4;
+        out.write('IDAT', off); off += 4;
+        comp.copy(out, off); off += comp.length;
+        const idatCrc = PNGFromWAVManager.crc32(out.subarray(off - (4 + idatLen), off));
+        out.writeUInt32BE(idatCrc, off); off += 4;
+
+        out.writeUInt32BE(0, off); off += 4;
+        out.write('IEND', off); off += 4;
+        const iendCrc = PNGFromWAVManager.crc32(Buffer.from('IEND'));
+        out.writeUInt32BE(iendCrc, off); off += 4;
+
+        writeFileSync(this.outputPngPath, out);
     }
 }

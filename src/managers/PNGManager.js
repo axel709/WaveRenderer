@@ -45,7 +45,18 @@ export class PNGManager {
                     const r = pixelBuf[ptr++];
                     const g = pixelBuf[ptr++];
                     const b = pixelBuf[ptr++];
-                    const a = (colorType === 6 ? pixelBuf[ptr++] : 255);
+                    
+                    let a = 255;
+
+                    if (colorType === 6) {
+                        a = pixelBuf[ptr++];
+
+                        if (a === 0) {
+                            pixels.push({ x, y, brightness: 255 });
+                            continue;
+                        }
+                    }
+
                     brightness = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
                 }
 
