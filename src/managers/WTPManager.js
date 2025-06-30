@@ -31,8 +31,8 @@ export class PNGFromWAVManager {
 
 
     async convert() {
-        const { width, height, brightnessArr } = await this.analyzeWAV();
-        this.writePNG(width, height, brightnessArr);
+        const { width, height, pixelData, colorType } = await this.analyzeWAV();
+        this.writePNG(width, height, pixelData, colorType);
     }
 
     async analyzeWAV() {
@@ -67,26 +67,75 @@ export class PNGFromWAVManager {
         const samples = buf.subarray(dataStart, dataStart + dataSize);
 
         const sps = CONSTANTS.WAV.SAMPLE_RATE;
-        const spp = Math.round(sps * CONSTANTS.WAV.PIXEL.DURATION);
+        const spp = CONSTANTS.WAV.PIXEL.SAMPLES_PER_COMPONENT;
+        const bytesPerPixelComponent = spp * 2;
 
-        const mk1 = samples.subarray(0, sps * 2);
-        const mk2 = samples.subarray(sps * 2, sps * 4);
+        const markerBytes = sps * 2; 
+        
+        const mk1 = samples.subarray(0, markerBytes); 
+        const mk2 = samples.subarray(markerBytes, markerBytes * 2); 
+
         const wHz = this._freqFromSegment(mk1, sps) / CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE;
         const hHz = this._freqFromSegment(mk2, sps) / CONSTANTS.WAV.FREQUENCIES.MARKER_SCALE;
         const width = Math.round(wHz);
         const height = Math.round(hHz);
 
-        const brightnessArr = new Uint8Array(width * height);
-        let ptr = 0;
+        const encodedDataBytes = dataSize - (markerBytes * 2);
+        const encodedComponents = encodedDataBytes / bytesPerPixelComponent;
 
-        for (let i = sps * 4; ptr < brightnessArr.length; i += spp * 2, ptr++) {
-            const seg = samples.subarray(i, i + spp * 2);
-            const hz = this._freqFromSegment(seg, sps);
-            const b = Math.min(255, Math.max(0, Math.round(hz / CONSTANTS.WAV.PIXEL.SCALE)));
-            brightnessArr[ptr] = b;
+        let colorType;
+        let bytesPerPixel;
+        const epsilon = 0.5;
+
+        if (Math.abs(encodedComponents - (width * height * 4)) < epsilon) {
+            colorType = 6;
+            bytesPerPixel = 4;
+        } else if (Math.abs(encodedComponents - (width * height * 3)) < epsilon) {
+            colorType = 2;
+            bytesPerPixel = 3;
+        } else if (Math.abs(encodedComponents - (width * height)) < epsilon) {
+            colorType = 0;
+            bytesPerPixel = 1;
+        } else {
+            console.warn(`Onverwacht aantal gecodeerde componenten. Verwacht ${width * height} (Grijswaarden), ${width * height * 3} (RGB) of ${width * height * 4} (RGBA), maar kreeg ${encodedComponents}. Terugval op grijswaarden.`);
+            colorType = 0;
+            bytesPerPixel = 1;
         }
 
-        return { width, height, brightnessArr };
+        const pixelData = new Uint8Array(width * height * bytesPerPixel);
+        let dataPtr = 0;
+        let currentByteOffset = markerBytes * 2;
+
+        if (colorType === 6) {
+            for (let pixelIndex = 0; pixelIndex < width * height; pixelIndex++) {
+                for (let channel = 0; channel < 4; channel++) {
+                    const seg = samples.subarray(currentByteOffset, currentByteOffset + bytesPerPixelComponent); 
+                    const hz = this._freqFromSegment(seg, sps);
+                    pixelData[dataPtr++] = Math.min(255, Math.max(0, Math.round(hz / CONSTANTS.WAV.PIXEL.SCALE)));
+                    currentByteOffset += bytesPerPixelComponent;
+                }
+            }
+        } else if (colorType === 2) {
+            for (let pixelIndex = 0; pixelIndex < width * height; pixelIndex++) {
+                for (let channel = 0; channel < 3; channel++) {
+                    const seg = samples.subarray(currentByteOffset, currentByteOffset + bytesPerPixelComponent);
+                    const hz = this._freqFromSegment(seg, sps);
+                    pixelData[dataPtr++] = Math.min(255, Math.max(0, Math.round(hz / CONSTANTS.WAV.PIXEL.SCALE)));
+                    currentByteOffset += bytesPerPixelComponent;
+                }
+            }
+        } else if (colorType === 0) {
+            for (let pixelIndex = 0; pixelIndex < width * height; pixelIndex++) {
+                const seg = samples.subarray(currentByteOffset, currentByteOffset + bytesPerPixelComponent);
+                const hz = this._freqFromSegment(seg, sps);
+                pixelData[dataPtr++] = Math.min(255, Math.max(0, Math.round(hz / CONSTANTS.WAV.PIXEL.SCALE)));
+                currentByteOffset += bytesPerPixelComponent;
+            }
+        } else {
+            throw new Error(`Niet-ondersteund colorType voor reconstructie tijdens WAV-analyse: ${colorType}`);
+        }
+
+        return { width, height, pixelData, colorType };
     }
 
     _freqFromSegment(seg, sampleRate) {
@@ -114,8 +163,8 @@ export class PNGFromWAVManager {
         }
 
         if (zc >= 4) {
-            const period = (t1 - t0) / (sampleRate * ((zc >> 1) - 1));
-            return period > 0 ? 1 / period : 0;
+            const calculatedFrequency = ((zc / 2) * sampleRate) / (t1 - t0);
+            return calculatedFrequency > 0 ? calculatedFrequency : 0;
         }
 
         const signal = new Float32Array(N);
@@ -149,18 +198,31 @@ export class PNGFromWAVManager {
         return bestF;
     }
 
-    writePNG(width, height, brightnessArr) {
-        const scanW = width + 1;
-        const dataSize = scanW * height;
+    writePNG(width, height, pixelData, colorType) {
+        let bytesPerPixel;
+        
+        if (colorType === 0) {
+            bytesPerPixel = 1;
+        } else if (colorType === 2) {
+            bytesPerPixel = 3;
+        } else if (colorType === 4) {
+            bytesPerPixel = 2;
+        } else if (colorType === 6) {
+            bytesPerPixel = 4;
+        } else {
+            throw new Error(`Unsupported colorType for PNG writing: ${colorType}`);
+        }
+
+        const scanlineLength = width * bytesPerPixel;
+        const dataSize = (scanlineLength + 1) * height;
         const raw = Buffer.allocUnsafe(dataSize);
         let p = 0;
 
         for (let y = 0; y < height; y++) {
             raw[p++] = 0;
-            const base = y * width;
-            
-            for (let x = 0; x < width; x++, p++) {
-                raw[p] = brightnessArr[base + x];
+            const base = y * scanlineLength;
+            for (let x = 0; x < scanlineLength; x++, p++) {
+                raw[p] = pixelData[base + x];
             }
         }
 
@@ -179,10 +241,11 @@ export class PNGFromWAVManager {
         out.writeUInt32BE(width, off); off += 4;
         out.writeUInt32BE(height, off); off += 4;
         out[off++] = 8;
+        out[off++] = colorType;
         out[off++] = 0;
         out[off++] = 0;
         out[off++] = 0;
-        out[off++] = 0;
+
         const ihdrCrc = PNGFromWAVManager.crc32(out.subarray(off - (4 + ihdrLen), off));
         out.writeUInt32BE(ihdrCrc, off); off += 4;
 

@@ -6,11 +6,19 @@ export class WAVManager {
         this.outputPath = outputPath;
     }
 
-    async generateWAV(width, height, pixels) {
+    async generateWAV(width, height, pixels, colorType) {
         const sampleRate = CONSTANTS.WAV.SAMPLE_RATE;
         const markerSampleCount = sampleRate;
-        const pixelSampleCount = Math.round(sampleRate * CONSTANTS.WAV.PIXEL.DURATION);
-        const totalSamples = markerSampleCount * 2 + pixels.length * pixelSampleCount;
+        const pixelSampleComponentCount = CONSTANTS.WAV.PIXEL.SAMPLES_PER_COMPONENT;
+
+        let totalComponents;
+        if (colorType === 6) {
+            totalComponents = pixels.length * 4;
+        } else {
+            totalComponents = pixels.length;
+        }
+        
+        const totalSamples = markerSampleCount * 2 + totalComponents * pixelSampleComponentCount;
         const bytesPerSample = 2;
         const dataSize = totalSamples * bytesPerSample;
         const totalSize = 44 + dataSize;
@@ -28,12 +36,12 @@ export class WAVManager {
         buffer.writeUInt32LE(sampleRate, offset); offset += 4;
         buffer.writeUInt32LE(sampleRate * bytesPerSample, offset); offset += 4;
         buffer.writeUInt16LE(bytesPerSample, offset); offset += 2;
-        buffer.writeUInt16LE(16, offset); offset += 2;
+        buffer.writeUInt16LE(bytesPerSample * 8, offset); offset += 2;
         buffer.write('data', offset); offset += 4;
         buffer.writeUInt32LE(dataSize, offset); offset += 4;
 
-        const amplitudeFactor = Math.floor(0.8 * 32767);
         let phase = 0;
+        const amplitudeFactor = 0.5 * 32767;
 
         const generateTone = (frequency, count) => {
             if (frequency === 0) {
@@ -65,9 +73,19 @@ export class WAVManager {
 
         const pixelScale = CONSTANTS.WAV.PIXEL.SCALE;
         
-        for (let i = 0; i < pixels.length; i++) {
-            const frequency = pixels[i].brightness * pixelScale;
-            generateTone(frequency, pixelSampleCount);
+        if (colorType === 6) {
+            for (let i = 0; i < pixels.length; i++) {
+                const pixel = pixels[i];
+                generateTone(pixel.r * pixelScale, pixelSampleComponentCount);
+                generateTone(pixel.g * pixelScale, pixelSampleComponentCount);
+                generateTone(pixel.b * pixelScale, pixelSampleComponentCount);
+                generateTone(pixel.a * pixelScale, pixelSampleComponentCount);
+            }
+        } else {
+            for (let i = 0; i < pixels.length; i++) {
+                const pixel = pixels[i];
+                generateTone(pixel.r * pixelScale, pixelSampleComponentCount);
+            }
         }
 
         writeFileSync(this.outputPath, buffer);

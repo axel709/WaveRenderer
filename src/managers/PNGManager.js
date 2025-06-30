@@ -37,40 +37,39 @@ export class PNGManager {
 
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
-                let brightness;
+                let r, g, b, a;
 
                 if (colorType === 0) {
-                    brightness = pixelBuf[ptr++];
+                    const val = pixelBuf[ptr++];
+                    r = val;
+                    g = val;
+                    b = val;
+                    a = 255;
+                } else if (colorType === 2) {
+                    r = pixelBuf[ptr++];
+                    g = pixelBuf[ptr++];
+                    b = pixelBuf[ptr++];
+                    a = 255;
+                } else if (colorType === 6) {
+                    r = pixelBuf[ptr++];
+                    g = pixelBuf[ptr++];
+                    b = pixelBuf[ptr++];
+                    a = pixelBuf[ptr++];
                 } else {
-                    const r = pixelBuf[ptr++];
-                    const g = pixelBuf[ptr++];
-                    const b = pixelBuf[ptr++];
-                    
-                    let a = 255;
-
-                    if (colorType === 6) {
-                        a = pixelBuf[ptr++];
-
-                        if (a === 0) {
-                            pixels.push({ x, y, brightness: 255 });
-                            continue;
-                        }
-                    }
-
-                    brightness = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+                    throw new Error(`Unsupported colorType during pixel mapping: ${colorType}`);
                 }
-
-                pixels.push({ x, y, brightness });
+                
+                pixels.push({ x, y, r, g, b, a });
             }
         }
 
         const durMap = Number(process.hrtime.bigint() - startMap) / 1e6;
-        console.log(`brightness-mapping took ${durMap.toFixed(3)} ms`);
+        console.log(`pixel-mapping took ${durMap.toFixed(3)} ms`);
 
         const durTotal = Number(process.hrtime.bigint() - startTotal) / 1e6;
         console.log(`readPixels total took ${durTotal.toFixed(3)} ms`);
 
-        return { width, height, pixels };
+        return { width, height, pixels, colorType };
     }
 
     async _readIHDR() {

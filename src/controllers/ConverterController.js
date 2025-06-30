@@ -11,8 +11,8 @@ export class ConverterController {
 
     async run() {
         try {
-            const { width, height, pixels } = await this.pngManager.readPixels();
-            await this.wavManager.generateWAV(width, height, pixels);
+            const { width, height, pixels, colorType } = await this.pngManager.readPixels();
+            await this.wavManager.generateWAV(width, height, pixels, colorType);
         } catch (err) {
             throw new Error(`Failed to process image: ${err.message}`);
         }
