@@ -13,7 +13,7 @@ export class PNGManager {
     async readPixels() {
         const startTotal = process.hrtime.bigint();
         const startIHDR = process.hrtime.bigint();
-        const { width, height, bitDepth, colorType } = await this._readIHDR();
+        const { width, height, colorType } = await this._readIHDR();
         const durIHDR = Number(process.hrtime.bigint() - startIHDR) / 1e6;
         console.log(`_readIHDR took ${durIHDR.toFixed(3)} ms`);
 
@@ -154,7 +154,7 @@ export class PNGManager {
                         const pr = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
                         recon = (x + pr) & 0xFF;
                         break;
-                        
+
                     default:
                         throw new Error(`Unsupported filter type: ${filter}`);
                 }
