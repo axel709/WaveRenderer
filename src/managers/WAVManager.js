@@ -1,4 +1,4 @@
-import { writeFileSync } from 'fs';
+import { writeFile } from 'fs/promises';
 import { CONSTANTS } from '../constants.js';
 
 export class WAVManager {
@@ -14,7 +14,10 @@ export class WAVManager {
         let totalComponents;
         if (colorType === 6) {
             totalComponents = pixels.length * 4;
-        } else {
+        } else if (colorType === 2) {
+            totalComponents = pixels.length * 3;
+        }
+        else {
             totalComponents = pixels.length;
         }
         
@@ -81,13 +84,21 @@ export class WAVManager {
                 generateTone(pixel.b * pixelScale, pixelSampleComponentCount);
                 generateTone(pixel.a * pixelScale, pixelSampleComponentCount);
             }
-        } else {
+        } else if (colorType === 2) {
+            for (let i = 0; i < pixels.length; i++) {
+                const pixel = pixels[i];
+                generateTone(pixel.r * pixelScale, pixelSampleComponentCount);
+                generateTone(pixel.g * pixelScale, pixelSampleComponentCount);
+                generateTone(pixel.b * pixelScale, pixelSampleComponentCount);
+            }
+        }
+        else {
             for (let i = 0; i < pixels.length; i++) {
                 const pixel = pixels[i];
                 generateTone(pixel.r * pixelScale, pixelSampleComponentCount);
             }
         }
 
-        writeFileSync(this.outputPath, buffer);
+        await writeFile(this.outputPath, buffer);
     }
 }
