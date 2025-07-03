@@ -10,16 +10,7 @@ export class WAVManager {
         const sampleRate = CONSTANTS.WAV.SAMPLE_RATE;
         const markerSampleCount = sampleRate;
         const pixelSampleComponentCount = CONSTANTS.WAV.PIXEL.SAMPLES_PER_COMPONENT;
-
-        let totalComponents;
-        if (colorType === 6) {
-            totalComponents = pixels.length * 4;
-        } else if (colorType === 2) {
-            totalComponents = pixels.length * 3;
-        }
-        else {
-            totalComponents = pixels.length;
-        }
+        const totalComponents = pixels.length;
         
         const totalSamples = markerSampleCount * 2 + totalComponents * pixelSampleComponentCount;
         const bytesPerSample = 2;
@@ -75,27 +66,20 @@ export class WAVManager {
         generateTone(heightFrequency, markerSampleCount);
 
         const pixelScale = CONSTANTS.WAV.PIXEL.SCALE;
-        
-        if (colorType === 6) {
-            for (let i = 0; i < pixels.length; i++) {
-                const pixel = pixels[i];
-                generateTone(pixel.r * pixelScale, pixelSampleComponentCount);
-                generateTone(pixel.g * pixelScale, pixelSampleComponentCount);
-                generateTone(pixel.b * pixelScale, pixelSampleComponentCount);
-                generateTone(pixel.a * pixelScale, pixelSampleComponentCount);
-            }
-        } else if (colorType === 2) {
-            for (let i = 0; i < pixels.length; i++) {
-                const pixel = pixels[i];
-                generateTone(pixel.r * pixelScale, pixelSampleComponentCount);
-                generateTone(pixel.g * pixelScale, pixelSampleComponentCount);
-                generateTone(pixel.b * pixelScale, pixelSampleComponentCount);
-            }
-        }
-        else {
-            for (let i = 0; i < pixels.length; i++) {
-                const pixel = pixels[i];
-                generateTone(pixel.r * pixelScale, pixelSampleComponentCount);
+        const bytesPerPixel = { 6: 4, 2: 3, 0: 1 }[colorType];
+
+        for (let i = 0; i < pixels.length; i += bytesPerPixel) {
+            if (colorType === 6) {
+                generateTone(pixels[i] * pixelScale, pixelSampleComponentCount);
+                generateTone(pixels[i + 1] * pixelScale, pixelSampleComponentCount);
+                generateTone(pixels[i + 2] * pixelScale, pixelSampleComponentCount);
+                generateTone(pixels[i + 3] * pixelScale, pixelSampleComponentCount);
+            } else if (colorType === 2) {
+                generateTone(pixels[i] * pixelScale, pixelSampleComponentCount);
+                generateTone(pixels[i + 1] * pixelScale, pixelSampleComponentCount);
+                generateTone(pixels[i + 2] * pixelScale, pixelSampleComponentCount);
+            } else {
+                generateTone(pixels[i] * pixelScale, pixelSampleComponentCount);
             }
         }
 

@@ -31,45 +31,10 @@ export class PNGManager {
         const durFilter = Number(process.hrtime.bigint() - startFilter) / 1e6;
         console.log(`_reverseFilter took ${durFilter.toFixed(3)} ms`);
 
-        const startMap = process.hrtime.bigint();
-        const pixels = [];
-        let ptr = 0;
-
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                let r, g, b, a;
-
-                if (colorType === 0) {
-                    const val = pixelBuf[ptr++];
-                    r = val;
-                    g = val;
-                    b = val;
-                    a = 255;
-                } else if (colorType === 2) {
-                    r = pixelBuf[ptr++];
-                    g = pixelBuf[ptr++];
-                    b = pixelBuf[ptr++];
-                    a = 255;
-                } else if (colorType === 6) {
-                    r = pixelBuf[ptr++];
-                    g = pixelBuf[ptr++];
-                    b = pixelBuf[ptr++];
-                    a = pixelBuf[ptr++];
-                } else {
-                    throw new Error(`Unsupported colorType during pixel mapping: ${colorType}`);
-                }
-                
-                pixels.push({ x, y, r, g, b, a });
-            }
-        }
-
-        const durMap = Number(process.hrtime.bigint() - startMap) / 1e6;
-        console.log(`pixel-mapping took ${durMap.toFixed(3)} ms`);
-
         const durTotal = Number(process.hrtime.bigint() - startTotal) / 1e6;
         console.log(`readPixels total took ${durTotal.toFixed(3)} ms`);
 
-        return { width, height, pixels, colorType };
+        return { width, height, pixels: pixelBuf, colorType };
     }
 
     async _readIHDR() {
@@ -189,6 +154,7 @@ export class PNGManager {
                         const pr = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
                         recon = (x + pr) & 0xFF;
                         break;
+                        
                     default:
                         throw new Error(`Unsupported filter type: ${filter}`);
                 }

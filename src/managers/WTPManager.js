@@ -115,6 +115,7 @@ export class PNGFromWAVManager {
                     currentByteOffset += bytesPerPixelComponent;
                 }
             }
+
         } else if (colorType === 2) {
             for (let pixelIndex = 0; pixelIndex < width * height; pixelIndex++) {
                 for (let channel = 0; channel < 3; channel++) {
@@ -124,6 +125,7 @@ export class PNGFromWAVManager {
                     currentByteOffset += bytesPerPixelComponent;
                 }
             }
+
         } else if (colorType === 0) {
             for (let pixelIndex = 0; pixelIndex < width * height; pixelIndex++) {
                 const seg = samples.subarray(currentByteOffset, currentByteOffset + bytesPerPixelComponent);
@@ -131,6 +133,7 @@ export class PNGFromWAVManager {
                 pixelData[dataPtr++] = Math.min(255, Math.max(0, Math.round(hz / CONSTANTS.WAV.PIXEL.SCALE)));
                 currentByteOffset += bytesPerPixelComponent;
             }
+
         } else {
             throw new Error(`Niet-ondersteund colorType voor reconstructie tijdens WAV-analyse: ${colorType}`);
         }
@@ -162,7 +165,7 @@ export class PNGFromWAVManager {
             prev = v;
         }
 
-        if (zc >= 4) {
+        if (zc >= 4 && t1 > t0) {
             const calculatedFrequency = ((zc / 2) * sampleRate) / (t1 - t0);
             return calculatedFrequency > 0 ? calculatedFrequency : 0;
         }
