@@ -1,5 +1,5 @@
-import { writeFile } from 'fs/promises';
 import { CONSTANTS } from '../constants.js';
+import { writeFile } from 'fs/promises';
 
 export class WAVManager {
     constructor(outputPath) {

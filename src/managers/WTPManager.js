@@ -97,7 +97,7 @@ export class PNGFromWAVManager {
             colorType = 0;
             bytesPerPixel = 1;
         } else {
-            console.warn(`Onverwacht aantal gecodeerde componenten. Verwacht ${width * height} (Grijswaarden), ${width * height * 3} (RGB) of ${width * height * 4} (RGBA), maar kreeg ${encodedComponents}. Terugval op grijswaarden.`);
+            console.warn(`Unexpected number of encoded components. Expected ${width * height} (Grayscale), ${width * height * 3} (RGB) or ${width * height * 4} (RGBA), but got ${encodedComponents}. Falling back to grayscale.`);
             colorType = 0;
             bytesPerPixel = 1;
         }
@@ -135,7 +135,7 @@ export class PNGFromWAVManager {
             }
 
         } else {
-            throw new Error(`Niet-ondersteund colorType voor reconstructie tijdens WAV-analyse: ${colorType}`);
+            throw new Error(`Unsupported colorType for reconstruction during WAV analysis: ${colorType}`);
         }
 
         return { width, height, pixelData, colorType };
