@@ -83,6 +83,8 @@ export class WAVManager {
             }
         }
 
+        console.log(`WAV size: ${(totalSize / (1024 * 1024)).toFixed(2)} MB`);
+
         await writeFile(this.outputPath, buffer);
     }
 }
