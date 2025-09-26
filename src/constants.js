@@ -15,13 +15,39 @@ export const CONSTANTS = {
      * Color Type 6: Truecolor with alpha (RGBA)
      */
 
+
+    /**
+     
+    Color    Allowed    Interpretation
+    Type    Bit Depths
+   
+    3 -     1,2,4,8     Each pixel is a palette index;
+    (ADD)               a PLTE chunk must appear.
+
+    4 -     8,16        Each pixel is a grayscale sample,
+                        followed by an alpha sample.
+                        
+     */
+
+    /**
+     * 
+     * [===] - Add ColorType 3 support (indexed color)
+     * [-] - PLTE chunk support
+     * [-] - cHRM chunk support
+     * [-] - gAMA chunk support
+     * [-] - sRGB chunk support
+     * [-] - pHYs chunk support (not needed)
+     * [-] - tIME chunk support (not needed)
+     *
+     */
+
     PNG: {
         SIGNATURE: Buffer.from([ 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A ]),
 
         SUPPORTED: {
             COLOR_TYPES: [0, 2, 6],
             BIT_DEPTH: 8
-        }
+        },
     },
 
     WAV: {
